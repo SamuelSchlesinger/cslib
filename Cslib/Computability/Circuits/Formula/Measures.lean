@@ -12,7 +12,9 @@ public import Cslib.Computability.Circuits.Formula.Basic
 
 /-! # Formula Measures
 
-Size, depth, leaf count, and gate count for Boolean formulas, along with basic lemmas.
+Structural measures on Boolean formulas: size, depth, leaf count, and gate count.
+These are purely structural — they depend only on the tree shape, not on the `Basis`
+or evaluation semantics, so they require no typeclass constraints.
 
 ## Main definitions
 
@@ -20,6 +22,12 @@ Size, depth, leaf count, and gate count for Boolean formulas, along with basic l
 - `Formula.depth` — longest root-to-leaf path length
 - `Formula.leafCount` — number of variable leaves
 - `Formula.gateCount` — number of gate nodes
+
+## Main results
+
+- `size_pos` — every formula has at least one node
+- `size_map`, `depth_map` — variable renaming preserves size and depth
+- `size_eq_leafCount_add_gateCount` — size decomposes as leaves + gates
 
 ## References
 
@@ -32,7 +40,8 @@ namespace Formula
 
 variable {Var Var' : Type*} {Op : Type*}
 
-/-- Total number of nodes in a formula (each variable and each gate counts as one). -/
+/-- Total number of nodes in a formula. Each variable leaf and each gate contributes 1.
+Equivalently, `size = leafCount + gateCount` (see `size_eq_leafCount_add_gateCount`). -/
 @[simp, scoped grind =]
 def size : Formula Var Op → Nat
   | .var _ => 1
@@ -45,13 +54,13 @@ def depth : Formula Var Op → Nat
   | .var _ => 0
   | .gate _ children => 1 + (children.map depth).foldl max 0
 
-/-- Number of variable leaves in a formula. -/
+/-- Number of variable leaves in a formula. Gates contribute 0; each `var` contributes 1. -/
 @[simp, scoped grind =]
 def leafCount : Formula Var Op → Nat
   | .var _ => 1
   | .gate _ children => (children.map leafCount).sum
 
-/-- Number of gate nodes in a formula. -/
+/-- Number of gate nodes in a formula. Variables contribute 0; each `gate` contributes 1. -/
 @[simp, scoped grind =]
 def gateCount : Formula Var Op → Nat
   | .var _ => 0

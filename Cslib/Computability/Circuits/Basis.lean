@@ -13,16 +13,28 @@ public import Cslib.Init
 /-! # Circuit Basis
 
 A `Basis` defines the set of operations (gates) available in a circuit or formula.
-Each operation has an arity and evaluation semantics given by `Basis.eval`.
+Each operation declares an `Arity` — how many inputs it accepts — and provides
+evaluation semantics via `Basis.eval`.
 
-We also define `StdOp`, the standard basis consisting of AND, OR, and NOT gates.
+## Design
+
+The key design choice is that `Basis.eval` requires a proof that the input list length
+satisfies the operation's arity (`(arity op).admits bs.length`). This makes it impossible
+to evaluate a gate with the wrong number of inputs at the type level. Because `Arity.admits`
+has a `Decidable` instance, callers can obtain the proof via a run-time check when the
+arity is not statically known.
+
+The `StdOp` basis demonstrates this pattern: AND and OR have arity `.exactly 2`, NOT has
+arity `.exactly 1`, and `eval` uses dependent pattern matching so Lean's equation compiler
+verifies exhaustiveness against the arity constraint.
 
 ## Main definitions
 
-- `Arity` — either a fixed natural number or unbounded
-- `Basis` — typeclass for circuit gate operations with arity and evaluation semantics
+- `Arity` — either a fixed natural number (`.exactly k`) or unbounded (`.any`)
+- `Arity.admits` — predicate: does an arity accept a given input count?
+- `Basis` — typeclass pairing an `arity` function with a type-safe `eval`
 - `StdOp` — standard Boolean operations: AND, OR, NOT
-- `Basis StdOp` — standard basis instance
+- `Basis StdOp` — standard basis instance with fixed arities
 
 ## References
 
@@ -40,7 +52,8 @@ inductive Arity where
   | any : Arity
   deriving DecidableEq, Repr
 
-/-- Does an arity accept a given input count? -/
+/-- Predicate stating that arity `a` accepts `n` inputs.
+For `.exactly k`, this requires `n = k`; for `.any`, it is always `True`. -/
 @[simp]
 def Arity.admits : Arity → Nat → Prop
   | .exactly k, n => n = k
@@ -60,7 +73,8 @@ class Basis (Op : Type*) where
   /-- Evaluate a gate operation on a list of Boolean inputs of the correct length. -/
   eval : (op : Op) → (bs : List Bool) → (arity op).admits bs.length → Bool
 
-/-- Standard Boolean operations: AND, OR, and NOT. -/
+/-- Standard Boolean operations: AND (binary conjunction), OR (binary disjunction),
+and NOT (unary negation). These form a functionally complete basis for Boolean logic. -/
 inductive StdOp where
   /-- Boolean conjunction. -/
   | and

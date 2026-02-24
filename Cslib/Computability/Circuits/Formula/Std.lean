@@ -12,15 +12,22 @@ public import Cslib.Computability.Circuits.Formula.Measures
 
 /-! # Standard-Basis Boolean Formulas
 
-Convenience constructors and evaluation lemmas for formulas over the standard basis (`StdOp`):
-binary AND, binary OR, and unary NOT.
+Convenience constructors and evaluation/measure lemmas for formulas over the standard
+basis (`StdOp`): binary AND, binary OR, and unary NOT.
+
+The smart constructors `Formula.and`, `Formula.or`, and `Formula.not` build formulas
+with the correct number of children for each operation, so the arity check in
+`Formula.eval` always succeeds for formulas built this way.
 
 ## Main definitions
 
-- `Formula.and`, `Formula.or`, `Formula.not` — smart constructors
-- `eval_and`, `eval_or`, `eval_not` — evaluation lemmas
+- `Formula.and`, `Formula.or`, `Formula.not` — smart constructors that guarantee
+  correct arity
+- `eval_and`, `eval_or`, `eval_not` — evaluation reduces to native Boolean operations
 - `eval_not_not` — double negation elimination
-- `deMorgan_and`, `deMorgan_or` — De Morgan's laws
+- `deMorgan_and`, `deMorgan_or` — De Morgan's laws at the formula level
+- `size_and`, `size_or`, `size_not` — size of standard constructs
+- `depth_and`, `depth_or`, `depth_not` — depth of standard constructs
 
 ## References
 
@@ -33,15 +40,18 @@ namespace Formula
 
 variable {Var : Type*}
 
-/-- Binary AND of two formulas over the standard basis. -/
+/-- Binary AND of two formulas over the standard basis.
+Constructs `.gate .and [a, b]`, which has exactly 2 children matching `StdOp.and`'s arity. -/
 @[scoped grind =]
 def and (a b : Formula Var StdOp) : Formula Var StdOp := .gate .and [a, b]
 
-/-- Binary OR of two formulas over the standard basis. -/
+/-- Binary OR of two formulas over the standard basis.
+Constructs `.gate .or [a, b]`, which has exactly 2 children matching `StdOp.or`'s arity. -/
 @[scoped grind =]
 def or (a b : Formula Var StdOp) : Formula Var StdOp := .gate .or [a, b]
 
-/-- Negation of a formula over the standard basis. -/
+/-- Negation of a formula over the standard basis.
+Constructs `.gate .not [a]`, which has exactly 1 child matching `StdOp.not`'s arity. -/
 @[scoped grind =]
 def not (a : Formula Var StdOp) : Formula Var StdOp := .gate .not [a]
 

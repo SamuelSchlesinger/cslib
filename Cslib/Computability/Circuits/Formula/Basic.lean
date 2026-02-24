@@ -14,13 +14,26 @@ public import Cslib.Computability.Circuits.Basis
 
 A Boolean formula is a tree-structured expression built from variables and gates drawn
 from a `Basis`. Unlike circuits, formulas require every gate output to feed into exactly
-one parent — there is no fan-out sharing.
+one parent — there is no fan-out sharing. This means every formula is a tree (not a DAG),
+and its size is an upper bound on the number of distinct sub-computations.
+
+## Design notes
+
+The `Formula` type itself is basis-agnostic — it is parameterized by an arbitrary operation
+type `Op` without requiring a `Basis` instance. This keeps the structural operations (`map`,
+`size`, `depth`, etc.) independent of evaluation semantics.
+
+Arity enforcement happens at evaluation time: `Formula.eval` uses the `Decidable` instance
+on `Arity.admits` to check whether each gate's children count matches its declared arity.
+Gates with mismatched arity evaluate to `false`. For well-formed formulas (e.g., those built
+via the smart constructors in `Formula.Std`), this check always succeeds.
 
 ## Main definitions
 
-- `Formula` — inductive type of Boolean formulas
-- `Formula.eval` — evaluate a formula given a variable assignment
-- `Formula.map` — rename variables
+- `Formula` — inductive type of Boolean formulas over variables `Var` and gates `Op`
+- `Formula.eval` — evaluate a formula under a variable assignment (requires `[Basis Op]`)
+- `Formula.map` — rename variables by applying a function to every leaf
+- `Formula.ind` — custom induction principle with membership-based hypothesis
 
 ## References
 
@@ -30,7 +43,10 @@ one parent — there is no fan-out sharing.
 namespace Cslib.Circuits
 
 /-- A Boolean formula over variables of type `Var` and gate operations of type `Op`.
-Formulas are trees: each gate takes a list of sub-formulas as children. -/
+
+Formulas are trees: each gate takes a list of sub-formulas as children. The type
+does not enforce arity constraints — any operation can be applied to any number of
+children. Arity is checked dynamically during `eval`. -/
 inductive Formula (Var : Type*) (Op : Type*) where
   /-- A variable leaf. -/
   | var : Var → Formula Var Op
@@ -41,9 +57,12 @@ namespace Formula
 
 variable {Var Var' : Type*} {Op : Type*}
 
-/-- Evaluate a formula given a variable assignment and a `Basis` for the gate operations.
-At each gate, the arity is checked via the `Decidable` instance on `Arity.admits`;
-if the children count does not match, the gate evaluates to `false`. -/
+/-- Evaluate a formula under a variable assignment.
+
+Variables are looked up directly. At each gate, children are evaluated recursively and
+the resulting list is passed to `Basis.eval` if the arity check succeeds (via the
+`Decidable` instance on `Arity.admits`). If the children count does not match the
+operation's declared arity, the gate evaluates to `false`. -/
 @[simp, scoped grind =]
 def eval [Basis Op] (assignment : Var → Bool) : Formula Var Op → Bool
   | .var v => assignment v
@@ -54,14 +73,16 @@ def eval [Basis Op] (assignment : Var → Bool) : Formula Var Op → Bool
     else
       false
 
-/-- Rename variables in a formula by applying `f` to every variable leaf. -/
+/-- Rename variables in a formula by applying `f` to every variable leaf.
+Gate structure and operations are preserved; only the `var` nodes change. -/
 @[scoped grind =]
 def map (f : Var → Var') : Formula Var Op → Formula Var' Op
   | .var v => .var (f v)
   | .gate op children => .gate op (children.map (Formula.map f))
 
 /-- Custom induction principle for `Formula` that provides `∀ c ∈ children, motive c`
-as the induction hypothesis for the `gate` case. Use with `induction f using Formula.ind`. -/
+as the induction hypothesis for the `gate` case, rather than Lean's default structural
+induction on the nested `List`. Use with `induction f using Formula.ind`. -/
 @[elab_as_elim]
 def ind {motive : Formula Var Op → Prop}
     (hvar : ∀ v, motive (.var v))
