@@ -60,10 +60,6 @@ public import Cslib.Foundations.Data.RelatesInSteps
 public import Cslib.Foundations.Data.Relation
 public import Cslib.Foundations.Data.Set.Saturation
 public import Cslib.Foundations.Data.StackTape
-public import Cslib.Foundations.Probability.Entropy
-public import Cslib.Foundations.Probability.EntropyOptimization
-public import Cslib.Foundations.Probability.Locality
-public import Cslib.Foundations.Probability.MarginalConstraints
 public import Cslib.Foundations.Lint.Basic
 public import Cslib.Foundations.Semantics.FLTS.Basic
 public import Cslib.Foundations.Semantics.FLTS.FLTSToLTS

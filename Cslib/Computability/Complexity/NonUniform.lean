@@ -93,14 +93,3 @@ theorem ComplexityP_subset_PPolyAdvice {Symbol : Type} :
   · rw [List.append_nil]
     exact hDecides x
 
-/-- The circuit-based and advice-based definitions of P/poly are equivalent.
-
-This is a deep theorem requiring:
-1. Circuit encoding: any polynomial-size circuit family can be described by
-   polynomial-length advice strings.
-2. Universal simulation: a polynomial-time TM can evaluate a circuit given
-   its description as advice.
-
-See [Arora-Barak, Theorem 6.11]. -/
-axiom PPoly_eq_PPolyAdvice :
-    PPoly (Op := NCOp) = PPolyAdvice (Symbol := Bool)
