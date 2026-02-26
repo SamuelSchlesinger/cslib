@@ -21,9 +21,9 @@ def assignment : TestVar → Bool
   | .y => false
   | .z => true
 
-def x : Formula TestVar StdOp := .var .x
-def y : Formula TestVar StdOp := .var .y
-def z : Formula TestVar StdOp := .var .z
+def x : Formula TestVar NCOp := .var .x
+def y : Formula TestVar NCOp := .var .y
+def z : Formula TestVar NCOp := .var .z
 
 /-! ### Evaluation tests -/
 
@@ -71,7 +71,7 @@ example : (Formula.or (Formula.and x y) z).depth = 2 := by
 
 /-! ### De Morgan via theorem -/
 
-example (v : TestVar → Bool) (a b : Formula TestVar StdOp) :
+example (v : TestVar → Bool) (a b : Formula TestVar NCOp) :
     (Formula.not (Formula.and a b)).eval v =
     (Formula.or (Formula.not a) (Formula.not b)).eval v :=
   Formula.deMorgan_and v a b

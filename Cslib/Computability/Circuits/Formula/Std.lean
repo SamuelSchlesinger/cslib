@@ -13,7 +13,7 @@ public import Cslib.Computability.Circuits.Formula.Measures
 /-! # Standard-Basis Boolean Formulas
 
 Convenience constructors and evaluation/measure lemmas for formulas over the standard
-basis (`StdOp`): binary AND, binary OR, and unary NOT.
+bounded fan-in basis (`NCOp`): binary AND, binary OR, and unary NOT.
 
 The smart constructors `Formula.and`, `Formula.or`, and `Formula.not` build formulas
 with the correct number of children for each operation, so the arity check in
@@ -41,54 +41,54 @@ namespace Formula
 variable {Var : Type*}
 
 /-- Binary AND of two formulas over the standard basis.
-Constructs `.gate .and [a, b]`, which has exactly 2 children matching `StdOp.and`'s arity. -/
+Constructs `.gate .and [a, b]`, which has exactly 2 children matching `NCOp.and`'s arity. -/
 @[scoped grind =]
-def and (a b : Formula Var StdOp) : Formula Var StdOp := .gate .and [a, b]
+def and (a b : Formula Var NCOp) : Formula Var NCOp := .gate .and [a, b]
 
 /-- Binary OR of two formulas over the standard basis.
-Constructs `.gate .or [a, b]`, which has exactly 2 children matching `StdOp.or`'s arity. -/
+Constructs `.gate .or [a, b]`, which has exactly 2 children matching `NCOp.or`'s arity. -/
 @[scoped grind =]
-def or (a b : Formula Var StdOp) : Formula Var StdOp := .gate .or [a, b]
+def or (a b : Formula Var NCOp) : Formula Var NCOp := .gate .or [a, b]
 
 /-- Negation of a formula over the standard basis.
-Constructs `.gate .not [a]`, which has exactly 1 child matching `StdOp.not`'s arity. -/
+Constructs `.gate .not [a]`, which has exactly 1 child matching `NCOp.not`'s arity. -/
 @[scoped grind =]
-def not (a : Formula Var StdOp) : Formula Var StdOp := .gate .not [a]
+def not (a : Formula Var NCOp) : Formula Var NCOp := .gate .not [a]
 
 /-! ### Evaluation lemmas -/
 
 @[simp, scoped grind =]
-theorem eval_and (v : Var → Bool) (a b : Formula Var StdOp) :
+theorem eval_and (v : Var → Bool) (a b : Formula Var NCOp) :
     (Formula.and a b).eval v = (a.eval v && b.eval v) := by
   simp [Formula.and, eval, Basis.eval, Arity.admits]
 
 @[simp, scoped grind =]
-theorem eval_or (v : Var → Bool) (a b : Formula Var StdOp) :
+theorem eval_or (v : Var → Bool) (a b : Formula Var NCOp) :
     (Formula.or a b).eval v = (a.eval v || b.eval v) := by
   simp [Formula.or, eval, Basis.eval, Arity.admits]
 
 @[simp, scoped grind =]
-theorem eval_not (v : Var → Bool) (a : Formula Var StdOp) :
+theorem eval_not (v : Var → Bool) (a : Formula Var NCOp) :
     (Formula.not a).eval v = !(a.eval v) := by
   simp [Formula.not, eval, Basis.eval, Arity.admits]
 
 /-! ### Double negation -/
 
 @[simp, scoped grind =]
-theorem eval_not_not (v : Var → Bool) (a : Formula Var StdOp) :
+theorem eval_not_not (v : Var → Bool) (a : Formula Var NCOp) :
     (Formula.not (Formula.not a)).eval v = a.eval v := by
   simp [eval_not, Bool.not_not]
 
 /-! ### De Morgan's laws -/
 
 @[scoped grind =]
-theorem deMorgan_and (v : Var → Bool) (a b : Formula Var StdOp) :
+theorem deMorgan_and (v : Var → Bool) (a b : Formula Var NCOp) :
     (Formula.not (Formula.and a b)).eval v =
     (Formula.or (Formula.not a) (Formula.not b)).eval v := by
   simp [eval_not, eval_and, eval_or]
 
 @[scoped grind =]
-theorem deMorgan_or (v : Var → Bool) (a b : Formula Var StdOp) :
+theorem deMorgan_or (v : Var → Bool) (a b : Formula Var NCOp) :
     (Formula.not (Formula.or a b)).eval v =
     (Formula.and (Formula.not a) (Formula.not b)).eval v := by
   simp [eval_not, eval_and, eval_or]
@@ -96,32 +96,32 @@ theorem deMorgan_or (v : Var → Bool) (a b : Formula Var StdOp) :
 /-! ### Measure lemmas for standard constructors -/
 
 @[simp, scoped grind =]
-theorem size_and (a b : Formula Var StdOp) :
+theorem size_and (a b : Formula Var NCOp) :
     (Formula.and a b).size = 1 + a.size + b.size := by
   simp [Formula.and, size, List.map, List.sum]; omega
 
 @[simp, scoped grind =]
-theorem size_or (a b : Formula Var StdOp) :
+theorem size_or (a b : Formula Var NCOp) :
     (Formula.or a b).size = 1 + a.size + b.size := by
   simp [Formula.or, size, List.map, List.sum]; omega
 
 @[simp, scoped grind =]
-theorem size_not (a : Formula Var StdOp) :
+theorem size_not (a : Formula Var NCOp) :
     (Formula.not a).size = 1 + a.size := by
   simp [Formula.not, size, List.map, List.sum]
 
 @[simp, scoped grind =]
-theorem depth_and (a b : Formula Var StdOp) :
+theorem depth_and (a b : Formula Var NCOp) :
     (Formula.and a b).depth = 1 + max a.depth b.depth := by
   simp [Formula.and, depth, List.map, List.foldl, Nat.max_def]
 
 @[simp, scoped grind =]
-theorem depth_or (a b : Formula Var StdOp) :
+theorem depth_or (a b : Formula Var NCOp) :
     (Formula.or a b).depth = 1 + max a.depth b.depth := by
   simp [Formula.or, depth, List.map, List.foldl, Nat.max_def]
 
 @[simp, scoped grind =]
-theorem depth_not (a : Formula Var StdOp) :
+theorem depth_not (a : Formula Var NCOp) :
     (Formula.not a).depth = 1 + a.depth := by
   simp [Formula.not, depth, List.map, List.foldl]
 
