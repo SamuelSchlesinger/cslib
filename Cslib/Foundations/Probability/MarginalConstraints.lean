@@ -66,6 +66,22 @@ theorem marginalConstraintsRespectK_mono
   intro h c hc
   exact Nat.le_trans (h c hc) hkl
 
+/-- Pointwise local-support set induced by constrained marginals:
+an assignment is admissible if every constrained local pattern has positive target mass. -/
+def LocalSupportSet
+    {Var : Type u} {Val : Type v} [DecidableEq Var]
+    (constraints : List (MarginalConstraint Var Val)) :
+    Set (Assignment Var Val) :=
+  { x | ∀ c ∈ constraints, c.target (scopeProjection c.scope x) ≠ 0 }
+
+/-- Maximal-support property for a candidate max-entropy solution:
+its support equals the intersection of local marginal supports. -/
+def MaximalSupport
+    {Var : Type u} {Val : Type v} [DecidableEq Var]
+    (constraints : List (MarginalConstraint Var Val))
+    (p : PMF (Assignment Var Val)) : Prop :=
+  p.support = LocalSupportSet constraints
+
 /-- Local completeness at the level of marginal constraints: every point outside
 `target` violates at least one constrained local pattern by having zero target mass. -/
 def MarginalLocalCompleteness
@@ -102,6 +118,18 @@ theorem support_subset_of_marginalLocalCompleteness
   have hTargetNonzero : c.target (scopeProjection c.scope x) ≠ 0 := by
     simpa [hEq] using hMargNonzero
   exact hTargetNonzero hcZero
+
+theorem support_subset_localSupportSet_of_feasibleMarginals
+    {Var : Type u} {Val : Type v} [DecidableEq Var]
+    {constraints : List (MarginalConstraint Var Val)}
+    {q : PMF (Assignment Var Val)}
+    (hFeasible : FeasibleMarginals constraints q) :
+    q.support ⊆ LocalSupportSet constraints := by
+  intro x hx c hcIn
+  have hMargNonzero : marginal c.scope q (scopeProjection c.scope x) ≠ 0 :=
+    marginal_at_projection_nonzero_of_mem_support q c.scope hx
+  have hEq : marginal c.scope q = c.target := hFeasible c hcIn
+  simpa [hEq] using hMargNonzero
 
 /-- Marginal-constraint version of `k`-locality: exact feasibility and entropy optimality. -/
 def IsKLocalMarginal
