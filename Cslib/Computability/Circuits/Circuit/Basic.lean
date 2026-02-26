@@ -1,0 +1,131 @@
+/-
+Copyright (c) 2026 Samuel Schlesinger. All rights reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
+Authors: Samuel Schlesinger
+-/
+
+module
+
+public import Cslib.Computability.Circuits.Basis
+
+@[expose] public section
+
+/-! # Boolean Circuits (DAG-based)
+
+A Boolean circuit is a directed acyclic graph (DAG) of gates, unlike a `Formula` which is
+a tree (no fan-out sharing). A polynomial-size circuit can compute functions that would
+require an exponential-size formula, making circuits the standard model for non-uniform
+complexity classes like P/poly and SIZE(s).
+
+## Design notes
+
+A circuit over `n` input variables is represented as a list of `Gate`s in topological order.
+Wires `0..n-1` carry the input variables; wire `n + i` carries the output of `gates[i]`.
+Each gate references its inputs by wire index, and the circuit designates one wire as the
+output.
+
+There is no well-formedness constraint in the `Circuit` structure. Instead, `Circuit.eval`
+uses defensive evaluation: out-of-bounds wire references produce `false`, and arity
+mismatches produce `false`. This mirrors the `Formula.eval` design.
+
+## Main definitions
+
+- `Gate` — a gate with an operation and a list of input wire indices
+- `Circuit` — a circuit with `n` input variables, a list of gates, and an output wire
+- `Circuit.eval` — evaluate a circuit on an input assignment
+- `Circuit.size` — number of gates in a circuit
+- `Circuit.depth` — longest path from an input to the output
+- `CircuitFamily` — a family of circuits indexed by input size
+- `CircuitFamily.Decides` — a circuit family decides a language
+
+## References
+
+* [S. Arora, B. Barak, *Computational Complexity: A Modern Approach*][AroraB2009]
+-/
+
+namespace Cslib.Circuits
+
+/-- A gate in a circuit, consisting of an operation and a list of input wire indices. -/
+structure Gate (Op : Type*) where
+  /-- The gate operation. -/
+  op : Op
+  /-- The wire indices feeding into this gate. -/
+  inputs : List ℕ
+
+/-- A Boolean circuit with `n` input variables.
+
+Wires `0..n-1` are input wires. Wire `n + i` is the output of `gates[i]`.
+The circuit produces its result on `outputWire`. -/
+structure Circuit (Op : Type*) (n : ℕ) where
+  /-- The gates of the circuit, in topological order. -/
+  gates : List (Gate Op)
+  /-- The wire carrying the circuit's output. -/
+  outputWire : ℕ
+
+namespace Circuit
+
+variable {Op : Type*} {n : ℕ}
+
+/-! ### Evaluation -/
+
+/-- Evaluate a circuit on an input assignment.
+
+Builds a list of wire values by folding over the gates in order. Each gate reads its
+inputs from previous wire values (defaulting to `false` for out-of-bounds references)
+and appends its output. The result is the value on `outputWire`. -/
+@[simp, scoped grind =]
+def eval [Basis Op] (C : Circuit Op n) (input : Fin n → Bool) : Bool :=
+  let inputList := List.ofFn input
+  let allWires := C.gates.foldl (fun wires gate =>
+    let gateInputs := gate.inputs.map (wires.getD · false)
+    let output := if h : (Basis.arity gate.op).admits gateInputs.length
+                  then Basis.eval gate.op gateInputs h
+                  else false
+    wires ++ [output]) inputList
+  allWires.getD C.outputWire false
+
+/-! ### Measures -/
+
+/-- The number of gates in a circuit. -/
+@[simp, scoped grind =]
+def size (C : Circuit Op n) : ℕ := C.gates.length
+
+/-- The depth of a circuit: the longest path from any input wire to the output wire.
+
+Computed by tracking the depth of each wire. Input wires have depth 0. Each gate's depth
+is one more than the maximum depth of its inputs. The circuit's depth is the depth of the
+output wire. Returns 0 if the output wire is out of bounds. -/
+@[simp, scoped grind =]
+def depth [Basis Op] (C : Circuit Op n) : ℕ :=
+  let inputDepths := List.replicate n 0
+  let allDepths := C.gates.foldl (fun depths gate =>
+    let gateDepth := gate.inputs.foldl (fun maxD i => max maxD (depths.getD i 0)) 0 + 1
+    depths ++ [gateDepth]) inputDepths
+  allDepths.getD C.outputWire 0
+
+/-! ### Basic lemmas -/
+
+@[simp]
+theorem size_mk (gates : List (Gate Op)) (out : ℕ) :
+    (Circuit.mk gates out : Circuit Op n).size = gates.length := rfl
+
+end Circuit
+
+/-! ### Circuit Families -/
+
+/-- A circuit family assigns a circuit to each input size `n`. -/
+def CircuitFamily (Op : Type*) := (n : ℕ) → Circuit Op n
+
+namespace CircuitFamily
+
+variable {Op : Type*}
+
+/-- A circuit family `C` **decides** a language `L : Set (List Bool)` when
+for every input `x`, membership in `L` is equivalent to the circuit of size `x.length`
+accepting `x`. -/
+def Decides [Basis Op] (C : CircuitFamily Op) (L : Set (List Bool)) : Prop :=
+  ∀ x : List Bool, x ∈ L ↔ (C x.length).eval (x.get ·) = true
+
+end CircuitFamily
+
+end Cslib.Circuits

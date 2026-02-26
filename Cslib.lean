@@ -23,9 +23,12 @@ public import Cslib.Computability.Automata.NA.Sum
 public import Cslib.Computability.Automata.NA.ToDA
 public import Cslib.Computability.Automata.NA.Total
 public import Cslib.Computability.Circuits.Basis
+public import Cslib.Computability.Circuits.Circuit.Basic
 public import Cslib.Computability.Circuits.Formula.Basic
 public import Cslib.Computability.Circuits.Formula.Measures
 public import Cslib.Computability.Circuits.Formula.Std
+public import Cslib.Computability.Complexity.Classes
+public import Cslib.Computability.Complexity.NonUniform
 public import Cslib.Computability.Languages.Congruences.BuchiCongruence
 public import Cslib.Computability.Languages.Congruences.RightCongruence
 public import Cslib.Computability.Languages.ExampleEventuallyZero
@@ -59,6 +62,10 @@ public import Cslib.Foundations.Data.RelatesInSteps
 public import Cslib.Foundations.Data.Relation
 public import Cslib.Foundations.Data.Set.Saturation
 public import Cslib.Foundations.Data.StackTape
+public import Cslib.Foundations.Probability.Entropy
+public import Cslib.Foundations.Probability.EntropyOptimization
+public import Cslib.Foundations.Probability.Locality
+public import Cslib.Foundations.Probability.MarginalConstraints
 public import Cslib.Foundations.Lint.Basic
 public import Cslib.Foundations.Semantics.FLTS.Basic
 public import Cslib.Foundations.Semantics.FLTS.FLTSToLTS
