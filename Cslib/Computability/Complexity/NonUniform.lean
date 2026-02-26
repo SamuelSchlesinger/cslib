@@ -103,4 +103,4 @@ This is a deep theorem requiring:
 
 See [Arora-Barak, Theorem 6.11]. -/
 axiom PPoly_eq_PPolyAdvice :
-    PPoly (Op := StdOp) = PPolyAdvice (Symbol := Bool)
+    PPoly (Op := NCOp) = PPolyAdvice (Symbol := Bool)
