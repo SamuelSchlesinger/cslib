@@ -82,6 +82,24 @@ def MaximalSupport
     (p : PMF (Assignment Var Val)) : Prop :=
   p.support = LocalSupportSet constraints
 
+/-- Paper-level maximal-support hypothesis in the marginal setting:
+`p` is max-entropy feasible and has support equal to the local-support set. -/
+def MaximalSupportHypothesis
+    {Var : Type u} {Val : Type v} [DecidableEq Var]
+    [Fintype (Assignment Var Val)]
+    (constraints : List (MarginalConstraint Var Val))
+    (p : PMF (Assignment Var Val)) : Prop :=
+  IsMaxEntropyAmong (FeasibleMarginals constraints) p ∧ MaximalSupport constraints p
+
+theorem maximalSupport_of_hypothesis
+    {Var : Type u} {Val : Type v} [DecidableEq Var]
+    [Fintype (Assignment Var Val)]
+    {constraints : List (MarginalConstraint Var Val)}
+    {p : PMF (Assignment Var Val)}
+    (h : MaximalSupportHypothesis constraints p) :
+    MaximalSupport constraints p :=
+  h.2
+
 /-- Local completeness at the level of marginal constraints: every point outside
 `target` violates at least one constrained local pattern by having zero target mass. -/
 def MarginalLocalCompleteness
