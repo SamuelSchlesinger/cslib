@@ -88,7 +88,8 @@ in polynomial time.
 that ignores the witness. The witness is taken to be empty (`[]`),
 and the polynomial witness bound is `0`.
 -/
-theorem ComplexityP_subset_ComplexityNP {Symbol : Type} :
+public theorem ComplexityP_subset_ComplexityNP
+    {Symbol : Type} :
     ComplexityP (Symbol := Symbol) ⊆ ComplexityNP := by
   intro L ⟨f, hf, hDecides⟩
   refine ⟨f, 0, hf, fun x => ?_⟩

@@ -62,6 +62,16 @@ structure Circuit (Op : Type*) (n : ℕ) where
   /-- The wire carrying the circuit's output. -/
   outputWire : ℕ
 
+namespace Gate
+
+variable {Op Op' : Type*}
+
+/-- Map a function over the operation of a gate, preserving wire structure. -/
+def mapOp (f : Op → Op') (g : Gate Op) : Gate Op' :=
+  { op := f g.op, inputs := g.inputs }
+
+end Gate
+
 namespace Circuit
 
 variable {Op : Type*} {n : ℕ}
@@ -102,6 +112,98 @@ def depth [Basis Op] (C : Circuit Op n) : ℕ :=
     let gateDepth := gate.inputs.foldl (fun maxD i => max maxD (depths.getD i 0)) 0 + 1
     depths ++ [gateDepth]) inputDepths
   allDepths.getD C.outputWire 0
+
+/-! ### Gate and circuit mapping -/
+
+variable {Op' : Type*}
+
+/-- Map a function over the operations of every gate in a circuit.
+This is used to embed a circuit over one basis into another
+(e.g., `NCOp → ACOp` for the `NC ⊆ AC` inclusion). -/
+def mapOp (f : Op → Op') (C : Circuit Op n) : Circuit Op' n :=
+  { gates := C.gates.map (Gate.mapOp f), outputWire := C.outputWire }
+
+@[simp]
+theorem size_mapOp (f : Op → Op') (C : Circuit Op n) :
+    (C.mapOp f).size = C.size := by
+  simp [mapOp, size]
+
+/-- `mapOp` preserves depth because depth only depends on wire connectivity,
+not on gate operations. -/
+theorem depth_mapOp [Basis Op] [Basis Op'] (f : Op → Op') (C : Circuit Op n) :
+    (C.mapOp f).depth = C.depth := by
+  simp only [depth, mapOp]
+  -- The depth foldl step function only uses gate.inputs, which mapOp preserves
+  suffices ∀ (gs : List (Gate Op)) (acc : List ℕ),
+    (gs.map (Gate.mapOp f)).foldl
+      (fun depths gate =>
+        depths ++ [gate.inputs.foldl
+          (fun maxD i => max maxD (depths.getD i 0)) 0 + 1])
+      acc =
+    gs.foldl
+      (fun depths gate =>
+        depths ++ [gate.inputs.foldl
+          (fun maxD i => max maxD (depths.getD i 0)) 0 + 1])
+      acc by
+    exact congr_arg (·.getD C.outputWire 0) (this C.gates _)
+  intro gs
+  induction gs with
+  | nil => simp
+  | cons g gs ih =>
+    intro acc
+    simp only [List.map_cons, List.foldl_cons, Gate.mapOp]
+    exact ih _
+
+/-- `mapOp` preserves evaluation when the function preserves gate semantics:
+same arity and same evaluation on admitted inputs. -/
+theorem eval_mapOp [Basis Op] [Basis Op'] (f : Op → Op') (C : Circuit Op n)
+    (harity : ∀ op, Basis.arity (f op) = Basis.arity op)
+    (heval : ∀ op bs (h : (Basis.arity op).admits bs.length),
+      Basis.eval (f op) bs (harity op ▸ h) = Basis.eval op bs h)
+    (input : Fin n → Bool) :
+    (C.mapOp f).eval input = C.eval input := by
+  simp only [eval, mapOp]
+  suffices ∀ (gs : List (Gate Op)) (acc : List Bool),
+    (gs.map (Gate.mapOp f)).foldl
+      (fun wires gate =>
+        wires ++ [if h : (Basis.arity gate.op).admits
+                    (gate.inputs.map (wires.getD · false)).length
+                  then Basis.eval gate.op (gate.inputs.map (wires.getD · false)) h
+                  else false])
+      acc =
+    gs.foldl
+      (fun wires gate =>
+        wires ++ [if h : (Basis.arity gate.op).admits
+                    (gate.inputs.map (wires.getD · false)).length
+                  then Basis.eval gate.op (gate.inputs.map (wires.getD · false)) h
+                  else false])
+      acc by
+    exact congr_arg (·.getD C.outputWire false) (this C.gates _)
+  intro gs
+  induction gs with
+  | nil => simp
+  | cons g gs ih =>
+    intro acc
+    simp only [List.map_cons, List.foldl_cons, Gate.mapOp]
+    -- Show the gate output is the same for f g.op vs g.op with same inputs
+    have h_output :
+      (if h : (Basis.arity (f g.op)).admits
+              (g.inputs.map (acc.getD · false)).length
+       then Basis.eval (f g.op) (g.inputs.map (acc.getD · false)) h
+       else false) =
+      (if h : (Basis.arity g.op).admits
+              (g.inputs.map (acc.getD · false)).length
+       then Basis.eval g.op (g.inputs.map (acc.getD · false)) h
+       else false) := by
+      set bs := g.inputs.map (acc.getD · false)
+      by_cases hadmits : (Basis.arity g.op).admits bs.length
+      · have hadmits' : (Basis.arity (f g.op)).admits bs.length := by rw [harity]; exact hadmits
+        rw [dif_pos hadmits', dif_pos hadmits]
+        exact heval g.op bs hadmits
+      · have hadmits' : ¬(Basis.arity (f g.op)).admits bs.length := by rw [harity]; exact hadmits
+        rw [dif_neg hadmits', dif_neg hadmits]
+    rw [h_output]
+    exact ih _
 
 /-! ### Basic lemmas -/
 
