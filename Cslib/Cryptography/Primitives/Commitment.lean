@@ -25,7 +25,7 @@ proofs, secure computation, and many other cryptographic protocols.
 
 ## Main Definitions
 
-* `CommitmentScheme` — a commitment scheme (Commit, Open)
+* `CommitmentScheme` — a commitment scheme (Commit, Open) with efficiency constraint
 * `CommitmentScheme.Hiding` — computational hiding property
 * `CommitmentScheme.Binding` — computational binding property
 
@@ -34,6 +34,10 @@ proofs, secure computation, and many other cryptographic protocols.
 We model commitment as a two-phase process: `commit` produces a
 commitment and an opening (decommitment), and `verify` checks that
 a claimed value matches the commitment.
+
+The `efficient` field records that commit and verify are poly-time
+computable. When the types carry `PolyTimeEncodable` instances, this
+should be witnessed by `IsPolyTimeFamily` on the operations.
 
 ## References
 
@@ -57,6 +61,10 @@ structure CommitmentScheme where
   Opening : ℕ → Type
   /-- Randomness for commitment -/
   Randomness : ℕ → Type
+  /-- Randomness type is finite (for sampling) -/
+  randomnessFintype : ∀ n, Fintype (Randomness n)
+  /-- Randomness type is nonempty -/
+  randomnessNonempty : ∀ n, Nonempty (Randomness n)
   /-- Create a commitment: given message and randomness, produce
   commitment and opening -/
   commit : (n : ℕ) → Message n → Randomness n →
@@ -64,6 +72,8 @@ structure CommitmentScheme where
   /-- Verify an opening: check that the opening matches the
   commitment for the claimed message -/
   verify : (n : ℕ) → Commitment n → Message n → Opening n → Bool
+  /-- The commit and verify algorithms are efficiently (poly-time) computable. -/
+  efficient : Prop
 
 /-! ### Correctness -/
 
@@ -87,15 +97,30 @@ structure CommitmentScheme.HidingAdversary (C : CommitmentScheme) where
   guess : (n : ℕ) → C.Commitment n → State n → Bool
 
 /-- The **hiding game**: the advantage of an adversary is
-`|Pr[A guesses correctly] - 1/2|`. -/
-def CommitmentScheme.HidingGame (C : CommitmentScheme) :
+$$\left|\mathbb{E}_{r,b}\left[\mathbf{1}[A.\mathrm{guess} = b]\right] - 1/2\right|$$
+where `r` is random commitment coins and `b` is a random challenge bit. -/
+noncomputable def CommitmentScheme.HidingGame (C : CommitmentScheme) :
     SecurityGame (CommitmentScheme.HidingAdversary C) where
-  advantage _A _n := 0  -- Placeholder
+  advantage A n :=
+    letI := C.randomnessFintype n; letI := C.randomnessNonempty n
+    |Cslib.Probability.uniformExpect (C.Randomness n × Bool)
+      (fun ⟨r, b⟩ =>
+        let (m₀, m₁, σ) := A.choose n
+        let m := if b then m₁ else m₀
+        let (com, _) := C.commit n m r
+        let b' := A.guess n com σ
+        Cslib.Probability.boolToReal (b' == b))
+     - 1 / 2|
 
 /-- A commitment scheme is **(computationally) hiding** if the hiding
-game is secure. -/
+game is secure against all adversaries. -/
 def CommitmentScheme.Hiding (C : CommitmentScheme) : Prop :=
   C.HidingGame.Secure
+
+/-- A commitment scheme is **hiding against** a class of adversaries. -/
+def CommitmentScheme.HidingAgainst (C : CommitmentScheme)
+    (Admissible : CommitmentScheme.HidingAdversary C → Prop) : Prop :=
+  C.HidingGame.SecureAgainst Admissible
 
 /-! ### Security: Binding -/
 
@@ -120,9 +145,90 @@ def CommitmentScheme.BindingGame (C : CommitmentScheme)
     then 1 else 0
 
 /-- A commitment scheme is **(computationally) binding** if the binding
-game is secure. -/
+game is secure against all adversaries. -/
 def CommitmentScheme.Binding (C : CommitmentScheme)
     [∀ n, DecidableEq (C.Message n)] : Prop :=
   (C.BindingGame).Secure
+
+/-- A commitment scheme is **binding against** a class of adversaries. -/
+def CommitmentScheme.BindingAgainst (C : CommitmentScheme)
+    [∀ n, DecidableEq (C.Message n)]
+    (Admissible : CommitmentScheme.BindingAdversary C → Prop) : Prop :=
+  C.BindingGame.SecureAgainst Admissible
+
+/-! ### Keyed Commitment Schemes
+
+A **keyed commitment scheme** has a public commitment key (e.g., a hash
+function description) sampled by the challenger and given to both the
+committer and verifier. The binding property is defined with respect to
+this random key. -/
+
+/-- A **keyed commitment scheme** has an additional `CommitKey` type
+that is sampled uniformly and given to the adversary. The `commit`
+and `verify` operations both take this key.
+
+This models commitment schemes based on collision-resistant hashing
+or other keyed primitives where the binding property depends on the
+key being honestly generated. -/
+structure KeyedCommitmentScheme where
+  /-- Commitment key type (e.g., hash function description) -/
+  CommitKey : ℕ → Type
+  /-- Message type -/
+  Message : ℕ → Type
+  /-- Commitment type -/
+  Commitment : ℕ → Type
+  /-- Opening (decommitment) type -/
+  Opening : ℕ → Type
+  /-- Commit key type is finite (for sampling) -/
+  commitKeyFintype : ∀ n, Fintype (CommitKey n)
+  /-- Commit key type is nonempty -/
+  commitKeyNonempty : ∀ n, Nonempty (CommitKey n)
+  /-- Create a commitment given key and message -/
+  commit : (n : ℕ) → CommitKey n → Message n → Commitment n × Opening n
+  /-- Verify an opening -/
+  verify : (n : ℕ) → CommitKey n → Commitment n → Message n → Opening n → Bool
+  /-- The algorithms are efficiently computable -/
+  efficient : Prop
+
+/-- A keyed commitment scheme is **correct** if verification always
+accepts honestly generated commitments. -/
+def KeyedCommitmentScheme.Correct (C : KeyedCommitmentScheme) : Prop :=
+  ∀ (n : ℕ) (ck : C.CommitKey n) (m : C.Message n),
+    let (com, opening) := C.commit n ck m
+    C.verify n ck com m opening = true
+
+/-- A **keyed binding adversary** receives a random commitment key
+and tries to open a commitment to two different messages. -/
+structure KeyedCommitmentScheme.BindingAdversary (C : KeyedCommitmentScheme) where
+  /-- Given a commitment key, produce a double-opening -/
+  forge : (n : ℕ) → C.CommitKey n →
+    C.Commitment n × C.Message n × C.Opening n × C.Message n × C.Opening n
+
+/-- The **keyed binding game**: the key is sampled uniformly and given
+to the adversary. Advantage = `E_ck[1[A double-opens]]`. -/
+noncomputable def KeyedCommitmentScheme.BindingGame (C : KeyedCommitmentScheme)
+    [∀ n, DecidableEq (C.Message n)] :
+    SecurityGame (KeyedCommitmentScheme.BindingAdversary C) where
+  advantage A n :=
+    letI := C.commitKeyFintype n; letI := C.commitKeyNonempty n
+    Cslib.Probability.uniformExpect (C.CommitKey n) (fun ck =>
+      let (com, m₁, o₁, m₂, o₂) := A.forge n ck
+      Cslib.Probability.boolToReal
+        (decide (m₁ ≠ m₂) &&
+         C.verify n ck com m₁ o₁ &&
+         C.verify n ck com m₂ o₂))
+
+/-- A keyed commitment scheme is **(computationally) binding** if the
+keyed binding game is secure against all adversaries. -/
+def KeyedCommitmentScheme.Binding (C : KeyedCommitmentScheme)
+    [∀ n, DecidableEq (C.Message n)] : Prop :=
+  C.BindingGame.Secure
+
+/-- A keyed commitment scheme is **binding against** a class of
+adversaries. -/
+def KeyedCommitmentScheme.BindingAgainst (C : KeyedCommitmentScheme)
+    [∀ n, DecidableEq (C.Message n)]
+    (Admissible : KeyedCommitmentScheme.BindingAdversary C → Prop) : Prop :=
+  C.BindingGame.SecureAgainst Admissible
 
 end
