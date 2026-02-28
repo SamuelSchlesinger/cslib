@@ -26,7 +26,9 @@ This file defines space-bounded computation and the complexity classes
 
 ## Main Results
 
+* `ComplexityL_subset_ComplexityP` — L ⊆ P
 * `ComplexityP_subset_ComplexityPSPACE` — P ⊆ PSPACE
+* `ComplexityNP_subset_ComplexityPSPACE` — NP ⊆ PSPACE
 
 ## References
 
@@ -127,3 +129,36 @@ public theorem ComplexityP_subset_ComplexityPSPACE :
               have := hf.bounds a.length
               omega)⟩
   }⟩, hDecides⟩
+
+/-- **L ⊆ P**: every language decidable in logarithmic space is also
+decidable in polynomial time.
+
+*Proof sketch*: A TM using space `s` on input of length `n` has at most
+`|Q| · (s+1) · |Σ|^s` distinct configurations (state × head position × tape
+contents). If the machine halts, it must do so within this many steps. For
+`s = c · log₂ n`, this bound is `|Q| · (c · log n + 1) · |Σ|^(c · log n)`.
+Since `|Σ|^(c · log₂ n) = n^(c · log₂ |Σ|)`, the total time is polynomial.
+
+We axiomatize this because the configuration-counting argument requires
+establishing that the number of configurations is polynomially bounded
+when the space is logarithmic, which involves a detailed TM simulation
+argument. -/
+axiom ComplexityL_subset_ComplexityP
+    {Symbol : Type} [Inhabited Symbol] [Fintype Symbol] :
+    ComplexityL (Symbol := Symbol) ⊆ ComplexityP
+
+/-- **NP ⊆ PSPACE**: every language in NP is also in PSPACE.
+
+*Proof sketch*: Given an NP verifier that runs in poly-time with poly-length
+witnesses, enumerate all possible witnesses `w` of length ≤ `p(|x|)`,
+run the verifier on `x ++ w` for each one, and accept if any verification
+succeeds. The enumeration reuses the same space for each witness, so the
+total space is polynomial (the space for the verifier plus `O(p(|x|))` for
+the current witness and the counter).
+
+We axiomatize this because the construction requires building a TM that
+enumerates binary strings of bounded length and composes them with the
+verifier, which is a substantial TM construction. -/
+axiom ComplexityNP_subset_ComplexityPSPACE
+    {Symbol : Type} [Inhabited Symbol] [Fintype Symbol] :
+    ComplexityNP (Symbol := Symbol) ⊆ ComplexityPSPACE

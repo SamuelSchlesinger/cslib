@@ -113,6 +113,14 @@ def depth [Basis Op] (C : Circuit Op n) : ℕ :=
     depths ++ [gateDepth]) inputDepths
   allDepths.getD C.outputWire 0
 
+/-! ### Well-formedness -/
+
+/-- A circuit is **gates-well-formed** if every gate's input list has a length
+admitted by the gate's operation arity. This ensures that `eval` never hits the
+defensive `false` fallback for arity mismatches. -/
+def GatesWellFormed [Basis Op] (C : Circuit Op n) : Prop :=
+  ∀ g ∈ C.gates, (Basis.arity g.op).admits g.inputs.length
+
 /-! ### Gate and circuit mapping -/
 
 variable {Op' : Type*}
@@ -127,6 +135,20 @@ def mapOp (f : Op → Op') (C : Circuit Op n) : Circuit Op' n :=
 theorem size_mapOp (f : Op → Op') (C : Circuit Op n) :
     (C.mapOp f).size = C.size := by
   simp [mapOp, size]
+
+/-- `mapOp` preserves gate well-formedness when the mapping preserves
+arity admissibility: if every admitted input count for `op` is also
+admitted for `f op`, then well-formedness transfers. -/
+theorem GatesWellFormed_mapOp [Basis Op] [Basis Op'] (f : Op → Op') (C : Circuit Op n)
+    (hadmits : ∀ op n, (Basis.arity op).admits n → (Basis.arity (f op)).admits n)
+    (hWF : C.GatesWellFormed) :
+    (C.mapOp f).GatesWellFormed := by
+  intro g hg
+  simp only [mapOp, List.mem_map] at hg
+  obtain ⟨g', hg'_mem, hg'_eq⟩ := hg
+  subst hg'_eq
+  simp only [Gate.mapOp]
+  exact hadmits g'.op g'.inputs.length (hWF g' hg'_mem)
 
 /-- `mapOp` preserves depth because depth only depends on wire connectivity,
 not on gate operations. -/

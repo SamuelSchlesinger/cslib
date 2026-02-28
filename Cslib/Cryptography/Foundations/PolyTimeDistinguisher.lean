@@ -51,6 +51,21 @@ class PolyTimeEncodable (α : ℕ → Type*) where
   /-- The encoding length is bounded by `lengthPoly.eval n`. -/
   encodeLengthBound : ∀ n (a : α n), (encode n a).length ≤ lengthPoly.eval n
 
+/-- A family of functions `f : (n : ℕ) → α n → β n` is **poly-time computable**
+if there exists a poly-time TM function on bitstrings that correctly computes
+`f` when composed with the polynomial-time encodings.
+
+Concretely, there exists `g : List Bool → List Bool` with a
+`PolyTimeComputable g` proof such that decoding `g(encode(n, a))` at
+security parameter `n` yields `f n a`. -/
+def IsPolyTimeFamily {α β : ℕ → Type*}
+    [PolyTimeEncodable α] [PolyTimeEncodable β]
+    (f : (n : ℕ) → α n → β n) : Prop :=
+  ∃ (g : List Bool → List Bool),
+    Nonempty (PolyTimeComputable (Symbol := Bool) g) ∧
+    ∀ n (a : α n),
+      PolyTimeEncodable.decode n (g (PolyTimeEncodable.encode n a)) = some (f n a)
+
 /-- A distinguisher is a **poly-time distinguisher** if there exists a poly-time
 computable function `f : List Bool → List Bool` on bitstrings such that the
 distinguisher's output (0 or 1) is determined by whether `f` returns a nonempty

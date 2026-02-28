@@ -23,14 +23,20 @@ GGM construction builds a PRF from any pseudorandom generator.
 
 ## Main Definitions
 
-* `PRF` — a pseudorandom function family
-* `PRF.Secure` — security via oracle indistinguishability
+* `PRF` — a pseudorandom function family (with efficiency constraint)
+* `PRF.Secure` — information-theoretic security
+* `PRF.SecureAgainst` — computational security against efficient adversaries
+* `PRP` — a pseudorandom permutation (bijective PRF)
 
 ## Design Notes
 
 We model PRFs as keyed function families `f : Key n → Input n → Output n`.
 Security says that no efficient oracle adversary can distinguish
 `f(k, ·)` (for random `k`) from a truly random function.
+
+The `efficient` field records that the eval function is poly-time
+computable. When the types carry `PolyTimeEncodable` instances, this
+should be witnessed by `IsPolyTimeFamily` applied to the curried eval.
 
 ## References
 
@@ -50,8 +56,18 @@ structure PRF where
   Input : ℕ → Type
   /-- Output type -/
   Output : ℕ → Type
+  /-- Key type is finite (for sampling) -/
+  keyFintype : ∀ n, Fintype (Key n)
+  /-- Key type is nonempty (for sampling) -/
+  keyNonempty : ∀ n, Nonempty (Key n)
+  /-- Function space `Input n → Output n` is finite (for sampling random functions) -/
+  funFintype : ∀ n, Fintype (Input n → Output n)
+  /-- Function space is nonempty -/
+  funNonempty : ∀ n, Nonempty (Input n → Output n)
   /-- The keyed function -/
   eval : (n : ℕ) → Key n → Input n → Output n
+  /-- The eval function is efficiently (poly-time) computable. -/
+  efficient : Prop
 
 /-- A **PRF adversary** has oracle access to either the PRF (keyed with
 a random key) or a truly random function, and must distinguish between
@@ -63,15 +79,28 @@ structure PRF.OracleAdversary (F : PRF) where
   /-- Given oracle access, produce a decision -/
   run : (n : ℕ) → (F.Input n → F.Output n) → Bool
 
-/-- The **PRF security game**: the adversary's advantage is the gap
-between its acceptance probability when given the real PRF oracle
-versus a random function oracle. -/
-def PRF.SecurityGame (F : PRF) :
+/-- The **PRF security game**: the adversary's advantage is
+$$\left|\Pr_{k}[A^{f_k}=1] - \Pr_{\mathit{rf}}[A^{\mathit{rf}}=1]\right|$$
+where `k` is a uniform random key and `rf` is a uniform random function. -/
+noncomputable def PRF.SecurityGame (F : PRF) :
     SecurityGame (PRF.OracleAdversary F) where
-  advantage _A _n := 0  -- Placeholder: |Pr[A^{f_k}=1] - Pr[A^{RF}=1]|
+  advantage A n :=
+    letI := F.keyFintype n; letI := F.keyNonempty n
+    letI := F.funFintype n; letI := F.funNonempty n
+    |Cslib.Probability.uniformExpect (F.Key n)
+        (fun k => Cslib.Probability.boolToReal (A.run n (F.eval n k)))
+     - Cslib.Probability.uniformExpect (F.Input n → F.Output n)
+        (fun rf => Cslib.Probability.boolToReal (A.run n rf))|
 
-/-- A PRF is **secure** if its security game is secure. -/
+/-- A PRF is **(information-theoretically) secure** if its security game
+is secure against all adversaries. -/
 def PRF.Secure (F : PRF) : Prop := F.SecurityGame.Secure
+
+/-- A PRF is **computationally secure** against a class of adversaries
+defined by `Admissible`. -/
+def PRF.SecureAgainst (F : PRF)
+    (Admissible : PRF.OracleAdversary F → Prop) : Prop :=
+  F.SecurityGame.SecureAgainst Admissible
 
 /-- A **pseudorandom permutation (PRP)** is a PRF where each keyed
 instance is a bijection. PRPs model block ciphers. -/
