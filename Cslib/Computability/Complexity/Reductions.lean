@@ -67,11 +67,13 @@ open Turing SingleTapeTM Polynomial
 
 variable {Symbol : Type} [Inhabited Symbol] [Fintype Symbol]
 
+set_option linter.unusedFintypeInType false in
 /-- `≤ₚ` is reflexive: every language reduces to itself via the identity. -/
 theorem PolyTimeReduces.refl
     (L : Set (List Symbol)) : PolyTimeReduces L L :=
   ⟨id, ⟨PolyTimeComputable.id⟩, fun _ => Iff.rfl⟩
 
+set_option linter.unusedFintypeInType false in
 /-- `≤ₚ` is transitive: if `L₁ ≤ₚ L₂` and `L₂ ≤ₚ L₃` then `L₁ ≤ₚ L₃`. -/
 theorem PolyTimeReduces.trans
     {L₁ L₂ L₃ : Set (List Symbol)}
@@ -83,6 +85,7 @@ theorem PolyTimeReduces.trans
   exact ⟨g ∘ f, ⟨hf.comp hg⟩,
     fun x => (hf_mem x).trans (hg_mem (f x))⟩
 
+set_option linter.unusedFintypeInType false in
 /-- If `L₁ ≤ₚ L₂` and `L₂ ∈ P` then `L₁ ∈ P`. -/
 theorem PolyTimeReduces.mem_ComplexityP
     {L₁ L₂ : Set (List Symbol)}
@@ -95,6 +98,7 @@ theorem PolyTimeReduces.mem_ComplexityP
   simp only [Function.comp]
   exact (hf_mem x).trans (hg_dec (f x))
 
+set_option linter.unusedFintypeInType false in
 /-- If any NP-complete language is in P, then P = NP.
 
 This is the fundamental theorem connecting NP-completeness to the

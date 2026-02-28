@@ -39,7 +39,6 @@ provable by simple exponent comparison.
 * `SizeDepth_mono_depth` — monotone in depth bound
 * `NC_mono` — NC^k ⊆ NC^(k+1)
 * `AC_mono` — AC^k ⊆ AC^(k+1)
-* `NC_subset_AC` — NC^k ⊆ AC^k
 * `NC_subset_SIZE` — NC^k ⊆ P/poly
 * `AC_subset_SIZE` — AC^k ⊆ P/poly
 
@@ -117,38 +116,6 @@ public theorem AC_mono {k : ℕ} : AC k ⊆ AC (k + 1) := by
   intro L ⟨p, c, C, hDec, hSize, hDepth⟩
   exact ⟨p, c, C, hDec, hSize, fun n => (hDepth n).trans
     (Nat.mul_le_mul_left c (Nat.pow_le_pow_right (Nat.succ_pos _) (Nat.le_succ k)))⟩
-
-/-! ### NC ⊆ AC -/
-
-/-- Embedding of bounded fan-in operations into unbounded fan-in.
-Maps `NCOp` (= `BoundedFanInOp 2`) gates to the corresponding `ACOp`
-gates. -/
-private def ncToAC : NCOp → ACOp
-  | .and => .and
-  | .or => .or
-  | .not => .not
-
-/-- **NC^k ⊆ AC^k**: every bounded fan-in circuit is also an unbounded
-fan-in circuit with the same size and depth. -/
--- TODO: complete the Decides proof — NCOp and ACOp have different
--- arities (.atMost 2 vs .any) so eval_mapOp doesn't apply directly,
--- but evaluation is still preserved because both AND/OR use the same
--- fold semantics and the inputs satisfy both arity constraints.
-public theorem NC_subset_AC {k : ℕ} : NC k ⊆ AC k := by
-  intro L ⟨p, c, C, hDec, hSize, hDepth⟩
-  refine ⟨p, c, fun n => (C n).mapOp ncToAC, ?_, ?_, ?_⟩
-  · -- Decides: mapOp preserves evaluation
-    intro x
-    have := hDec x
-    sorry
-  · -- Size: mapOp preserves size
-    intro n
-    rw [Circuit.size_mapOp]
-    exact hSize n
-  · -- Depth: mapOp preserves depth
-    intro n
-    rw [Circuit.depth_mapOp ncToAC (C n)]
-    exact hDepth n
 
 /-! ### NC, AC ⊆ P/poly -/
 

@@ -27,7 +27,6 @@ This file defines space-bounded computation and the complexity classes
 ## Main Results
 
 * `ComplexityP_subset_ComplexityPSPACE` — P ⊆ PSPACE
-* `ComplexityL_subset_ComplexityP` — L ⊆ P (stated, proof deferred)
 
 ## References
 
@@ -83,6 +82,7 @@ open Turing SingleTapeTM Polynomial Relation
 
 variable {Symbol : Type} [Inhabited Symbol] [Fintype Symbol]
 
+omit [Inhabited Symbol] [Fintype Symbol] in
 /-- Any configuration reachable during a halting computation has its space
 bounded by the initial space plus the halting time. -/
 private lemma space_bounded_of_time_bounded (tm : SingleTapeTM Symbol)
@@ -106,6 +106,7 @@ private lemma space_bounded_of_time_bounded (tm : SingleTapeTM Symbol)
   rw [Cfg.space_used_initCfg] at hspace
   omega
 
+omit [Inhabited Symbol] [Fintype Symbol] in
 /-- **P ⊆ PSPACE**: every language decidable in polynomial time is also
 decidable in polynomial space.
 
@@ -126,17 +127,3 @@ public theorem ComplexityP_subset_ComplexityPSPACE :
               have := hf.bounds a.length
               omega)⟩
   }⟩, hDecides⟩
-
-/-- **L ⊆ P**: every language decidable in logarithmic space is also
-decidable in polynomial time.
-
-*Proof sketch*: A TM using space `s(n)` has at most
-`|Q| · |Σ|^s(n) · s(n)` possible configurations. If `s(n) = O(log n)`,
-this is polynomial in `n`, so the TM halts in polynomial time (otherwise
-it would loop through a configuration twice). This is a deep result
-that requires a configuration-counting argument. -/
--- TODO: complete the proof via configuration counting
-public theorem ComplexityL_subset_ComplexityP :
-    ComplexityL (Symbol := Symbol) ⊆ ComplexityP := by
-  intro L ⟨f, c, ⟨hf⟩, hDecides⟩
-  exact ⟨f, ⟨sorry⟩, hDecides⟩

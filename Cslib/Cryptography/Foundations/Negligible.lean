@@ -6,6 +6,7 @@ Authors: Samuel Schlesinger
 
 module
 
+public import Cslib.Init
 public import Mathlib.Algebra.Polynomial.Eval.Defs
 public import Mathlib.Analysis.SpecialFunctions.Pow.Real
 
