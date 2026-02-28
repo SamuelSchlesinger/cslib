@@ -7,6 +7,7 @@ Authors: Samuel Schlesinger
 module
 
 public import Cslib.Cryptography.Foundations.Negligible
+public import Cslib.Probability.Discrete
 
 @[expose] public section
 
@@ -54,13 +55,45 @@ structure SecurityGame (Adv : Type*) where
   /-- The advantage of adversary `A` at security parameter `n`. -/
   advantage : Adv → ℕ → ℝ
 
-/-- A security game is **secure** if every adversary has negligible
-advantage.
+open Cslib.Probability in
+/-- Construct a `SecurityGame` from a **coin-passing game**.
 
-This captures the standard cryptographic notion: no efficient adversary
-can win the game with non-negligible probability beyond the baseline. -/
+The advantage of adversary `A` at security parameter `n` is the expected
+value of `play A n c` when `c` is drawn uniformly from `Coins n`.
+
+This captures the standard pattern for search games (e.g., OWF inversion)
+where a single uniform sample is drawn and the adversary's success
+probability is the expectation over that sample. -/
+noncomputable def SecurityGame.ofCoinGame
+    {Adv : Type*}
+    (Coins : ℕ → Type) [∀ n, Fintype (Coins n)] [∀ n, Nonempty (Coins n)]
+    (play : Adv → (n : ℕ) → Coins n → ℝ) :
+    SecurityGame Adv where
+  advantage A n := uniformExpect (Coins n) (play A n)
+
+/-- A security game is **(information-theoretically) secure** if every
+adversary has negligible advantage.
+
+This is the strongest notion: it quantifies over *all* adversaries,
+including computationally unbounded ones. For computational security
+(the standard cryptographic notion), use `SecureAgainst` with an
+efficiency predicate. -/
 def SecurityGame.Secure (G : SecurityGame Adv) : Prop :=
   ∀ A : Adv, Negligible (G.advantage A)
+
+/-- A security game is **secure against** a class of adversaries defined
+by the predicate `Admissible` if every admissible adversary has negligible
+advantage.
+
+This is the standard cryptographic notion: no *efficient* adversary can
+win the game with non-negligible probability beyond the baseline.
+
+Instantiations:
+- `G.SecureAgainst (fun _ => True)` — information-theoretic security (= `G.Secure`)
+- `G.SecureAgainst IsEfficient` — computational security against poly-time adversaries -/
+def SecurityGame.SecureAgainst (G : SecurityGame Adv)
+    (Admissible : Adv → Prop) : Prop :=
+  ∀ A : Adv, Admissible A → Negligible (G.advantage A)
 
 /-- A **security reduction** from game `G₁` to game `G₂` is a
 transformation of adversaries such that any adversary against `G₁`
@@ -97,6 +130,37 @@ theorem SecurityReduction.secure_transfer
   have hG₂ := h (R.reduce A)
   -- G₁.advantage A n
   --   = (G₁.adv - G₂.adv) + G₂.adv; both terms are negligible
+  have : Negligible (fun n =>
+      (G₁.advantage A n - G₂.advantage (R.reduce A) n) +
+      G₂.advantage (R.reduce A) n) :=
+    Negligible.add hbound hG₂
+  intro c hc
+  obtain ⟨N, hN⟩ := this c hc
+  refine ⟨N, fun n hn => ?_⟩
+  have := hN n hn
+  simp only [sub_add_cancel] at this
+  exact this
+
+/-- `Secure` implies `SecureAgainst` for any admissibility predicate. -/
+theorem SecurityGame.Secure.secureAgainst
+    {G : SecurityGame Adv} (h : G.Secure)
+    (Admissible : Adv → Prop) :
+    G.SecureAgainst Admissible := by
+  intro A _
+  exact h A
+
+/-- A reduction from `G₁` to `G₂` transfers `SecureAgainst` when the
+reduction maps admissible adversaries to admissible adversaries. -/
+theorem SecurityReduction.secure_against_transfer
+    {G₁ : SecurityGame Adv₁} {G₂ : SecurityGame Adv₂}
+    (R : SecurityReduction G₁ G₂)
+    {P₁ : Adv₁ → Prop} {P₂ : Adv₂ → Prop}
+    (hP : ∀ A, P₁ A → P₂ (R.reduce A))
+    (h : G₂.SecureAgainst P₂) :
+    G₁.SecureAgainst P₁ := by
+  intro A hA
+  have hbound := R.advantage_bound A
+  have hG₂ := h (R.reduce A) (hP A hA)
   have : Negligible (fun n =>
       (G₁.advantage A n - G₂.advantage (R.reduce A) n) +
       G₂.advantage (R.reduce A) n) :=

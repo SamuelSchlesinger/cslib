@@ -24,8 +24,9 @@ A function is one-way if it is:
 
 ## Main Definitions
 
-* `OWF` — a one-way function family
-* `OWF.Secure` — security (hardness of inversion)
+* `OWF` — a one-way function family (with efficiency constraint)
+* `OWF.Secure` — information-theoretic security (all adversaries)
+* `OWF.SecureAgainst` — computational security (efficient adversaries only)
 * `OWP` — a one-way permutation (bijective OWF)
 
 ## Design Notes
@@ -34,6 +35,11 @@ We model one-way functions as families indexed by the security parameter,
 following the standard asymptotic treatment. The inversion game is a
 search game where the adversary's advantage is `Pr[A inverts f on
 random input]`.
+
+The `efficient` field records that the OWF is poly-time computable.
+This is an abstract `Prop`; when the domain and range types carry
+`PolyTimeEncodable` instances, it should be witnessed by
+`IsPolyTimeFamily f` (defined in `PolyTimeDistinguisher.lean`).
 
 ## References
 
@@ -44,15 +50,24 @@ random input]`.
 /-- A **one-way function family** indexed by the security parameter.
 
 At each security level `n`, `f n` maps `Domain n` to `Range n`.
-The function must be efficiently computable (not enforced at the type
-level) and hard to invert (captured by `Secure`). -/
+The function is efficiently computable (`efficient`) and should be
+hard to invert (captured by `Secure` / `SecureAgainst`). -/
 structure OWF where
   /-- Input domain at security level n -/
   Domain : ℕ → Type
   /-- Output range at security level n -/
   Range : ℕ → Type
+  /-- Domain is finite (for sampling) -/
+  domainFintype : ∀ n, Fintype (Domain n)
+  /-- Domain is nonempty (for sampling) -/
+  domainNonempty : ∀ n, Nonempty (Domain n)
+  /-- Range has decidable equality (for checking inversion) -/
+  rangeDecEq : ∀ n, DecidableEq (Range n)
   /-- The one-way function -/
   f : (n : ℕ) → Domain n → Range n
+  /-- The function is efficiently (poly-time) computable.
+  When the types are `PolyTimeEncodable`, this should be `IsPolyTimeFamily f`. -/
+  efficient : Prop
 
 /-- An **inversion adversary** for a one-way function: given the security
 parameter and a value `y` in the range, attempts to find `x` such that
@@ -64,14 +79,25 @@ structure OWF.InversionAdversary (F : OWF) where
 /-- A one-way function is **secure** if for every inversion adversary,
 the probability of successful inversion is negligible.
 
-We model this as a security game where the advantage is the inversion
-success probability. -/
-def OWF.InversionGame (F : OWF) : SecurityGame (OWF.InversionAdversary F) where
-  advantage _A _n := 0  -- Placeholder: in a probabilistic model, this would be
-                         -- Pr_{x ← Domain n}[f(A.invert(f(x))) = f(x)]
+The advantage is `Pr_{x ← Domain n}[f(A.invert(f(x))) = f(x)]`, computed
+as a uniform expectation over the domain using the coin-passing style. -/
+noncomputable def OWF.InversionGame (F : OWF) : SecurityGame (OWF.InversionAdversary F) :=
+  letI (n : ℕ) := F.domainFintype n
+  letI (n : ℕ) := F.domainNonempty n
+  letI (n : ℕ) := F.rangeDecEq n
+  SecurityGame.ofCoinGame F.Domain
+    (fun A n x => Cslib.Probability.boolToReal (decide (F.f n (A.invert n (F.f n x)) = F.f n x)))
 
-/-- A one-way function is secure if the inversion game is secure. -/
+/-- A one-way function is **(information-theoretically) secure** if the
+inversion game is secure against all adversaries. -/
 def OWF.Secure (F : OWF) : Prop := F.InversionGame.Secure
+
+/-- A one-way function is **computationally secure** against a class of
+adversaries defined by `Admissible`. The standard instantiation uses
+poly-time adversaries. -/
+def OWF.SecureAgainst (F : OWF)
+    (Admissible : OWF.InversionAdversary F → Prop) : Prop :=
+  F.InversionGame.SecureAgainst Admissible
 
 /-- A **one-way permutation** is a one-way function that is a bijection
 at every security level. -/
@@ -85,3 +111,11 @@ end
 
 /-- A one-way permutation is a one-way function. -/
 def OWP.toSecure (P : OWP) (h : P.toOWF.Secure) : P.toOWF.Secure := h
+
+/-- Information-theoretic security implies computational security
+against any class of adversaries. -/
+theorem OWF.Secure.toSecureAgainst {F : OWF} (h : F.Secure)
+    (Admissible : OWF.InversionAdversary F → Prop) :
+    F.SecureAgainst Admissible := by
+  intro A _
+  exact h A

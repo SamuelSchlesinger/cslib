@@ -7,6 +7,8 @@ Authors: Samuel Schlesinger
 module
 
 public import Cslib.Cryptography.Foundations.Negligible
+public import Mathlib.Probability.ProbabilityMassFunction.Basic
+public import Mathlib.Probability.Distributions.Uniform
 
 @[expose] public section
 
@@ -244,3 +246,33 @@ theorem CompIndistinguishable.trans
   rw [abs_of_nonneg h_nn]
   exact lt_of_le_of_lt
     (le_trans h_tri (le_abs_self _)) h_bound
+
+/-! ### PMF-backed ensembles -/
+
+/-- A **PMF ensemble** is a family of probability mass functions indexed by
+the security parameter. Unlike `Ensemble` (which is just `ℕ → α n → ℝ`),
+a `PMFEnsemble` carries Mathlib's `PMF` structure guaranteeing that
+probabilities are non-negative and sum to 1.
+
+This type bridges Mathlib's probability library to the cryptographic
+indistinguishability framework. -/
+def PMFEnsemble (α : ℕ → Type*) := (n : ℕ) → PMF (α n)
+
+variable {α : ℕ → Type*}
+
+/-- Convert a `PMFEnsemble` to an `Ensemble` by extracting real-valued
+probabilities via `ENNReal.toReal`. -/
+noncomputable def PMFEnsemble.toEnsemble (E : PMFEnsemble α) : Ensemble α :=
+  fun n a => (E n a).toReal
+
+/-- The **uniform PMF ensemble**: at each security parameter, the
+distribution is uniform over the finite type. -/
+noncomputable def PMFEnsemble.uniform
+    [∀ n, Fintype (α n)] [∀ n, Nonempty (α n)] : PMFEnsemble α :=
+  fun n => PMF.uniformOfFintype (α n)
+
+/-- The ensemble derived from a PMF ensemble has non-negative values. -/
+theorem PMFEnsemble.toEnsemble_nonneg (E : PMFEnsemble α) :
+    ∀ n (a : α n), 0 ≤ E.toEnsemble n a := by
+  intro n a
+  exact ENNReal.toReal_nonneg

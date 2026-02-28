@@ -38,6 +38,10 @@ Adversaries are modeled abstractly: an IND-CPA adversary produces two
 challenge messages and then guesses which was encrypted. The advantage
 is `|Pr[correct guess] - 1/2|`.
 
+The `efficient` field records that encrypt and decrypt are poly-time
+computable. When the types carry `PolyTimeEncodable` instances, this
+should be witnessed by `IsPolyTimeFamily` on the curried operations.
+
 ## References
 
 * [S. Goldwasser, S. Micali, *Probabilistic Encryption*][GoldwasserM1984]
@@ -62,10 +66,20 @@ structure EncryptionScheme where
   Ciphertext : ℕ → Type
   /-- Randomness type for encryption -/
   Randomness : ℕ → Type
+  /-- Key type is finite (for sampling) -/
+  keyFintype : ∀ n, Fintype (Key n)
+  /-- Key type is nonempty -/
+  keyNonempty : ∀ n, Nonempty (Key n)
+  /-- Randomness type is finite (for sampling) -/
+  randomnessFintype : ∀ n, Fintype (Randomness n)
+  /-- Randomness type is nonempty -/
+  randomnessNonempty : ∀ n, Nonempty (Randomness n)
   /-- Deterministic encryption given key, plaintext, and randomness -/
   encrypt : (n : ℕ) → Key n → Plaintext n → Randomness n → Ciphertext n
   /-- Deterministic decryption -/
   decrypt : (n : ℕ) → Key n → Ciphertext n → Option (Plaintext n)
+  /-- The encrypt and decrypt algorithms are efficiently (poly-time) computable. -/
+  efficient : Prop
 
 /-- A **public-key encryption scheme** has separate public and secret
 keys. Key generation produces a pair; encryption uses the public key;
@@ -85,6 +99,8 @@ structure PKEncryptionScheme where
   encrypt : (n : ℕ) → PublicKey n → Plaintext n → Randomness n → Ciphertext n
   /-- Decrypt with the secret key -/
   decrypt : (n : ℕ) → SecretKey n → Ciphertext n → Option (Plaintext n)
+  /-- The encrypt and decrypt algorithms are efficiently (poly-time) computable. -/
+  efficient : Prop
 
 /-! ### Correctness -/
 
@@ -143,10 +159,24 @@ noncomputable def IND_CPA_Advantage (E : EncryptionScheme) (A : IND_CPA_Adversar
 
 /-- The **IND-CPA security game** for a symmetric encryption scheme.
 
-A scheme is IND-CPA secure if no efficient adversary can distinguish
-encryptions of different messages with non-negligible advantage. -/
-structure IND_CPA_Game (E : EncryptionScheme) extends
-    SecurityGame (IND_CPA_Adversary E)
+The advantage is
+$$\mathbb{E}_{k,r,b}\left[\mathbf{1}[A.\mathrm{guess} = b]\right] - 1/2$$
+where `k` is a random key, `r` is random encryption coins, and `b` is a
+random challenge bit. The coin space is `Key n × Randomness n × Bool`. -/
+noncomputable def IND_CPA_Game (E : EncryptionScheme) :
+    SecurityGame (IND_CPA_Adversary E) where
+  advantage A n :=
+    letI := E.keyFintype n; letI := E.keyNonempty n
+    letI := E.randomnessFintype n; letI := E.randomnessNonempty n
+    |Cslib.Probability.uniformExpect (E.Key n × E.Randomness n × Bool)
+      (fun ⟨k, r, b⟩ =>
+        let oracle := E.encrypt n k
+        let (m₀, m₁, σ) := A.choose n (fun m r' => oracle m r')
+        let challenge := if b then m₁ else m₀
+        let ct := E.encrypt n k challenge r
+        let b' := A.guess n ct σ
+        Cslib.Probability.boolToReal (b' == b))
+     - 1 / 2|
 
 /-! ### IND-CCA Security -/
 
