@@ -185,6 +185,62 @@ theorem uniformExpect_comm (α β : Type*) [Fintype α] [Nonempty α]
   rw [Finset.sum_comm]
   congr 1; ext b; congr 1; ext a; ring
 
+/-- If a function on a product doesn't depend on the second component,
+the expectation reduces to the marginal over the first component. -/
+theorem uniformExpect_prod_ignore_snd {α β : Type*} [Fintype α] [Nonempty α]
+    [Fintype β] [Nonempty β] (g : α → ℝ) :
+    uniformExpect (α × β) (fun p => g p.1) = uniformExpect α g := by
+  rw [uniformExpect_prod]
+  congr 1; ext a; exact uniformExpect_const β (g a)
+
+/-- If a function on a product doesn't depend on the first component,
+the expectation reduces to the marginal over the second component. -/
+theorem uniformExpect_prod_ignore_fst {α β : Type*} [Fintype α] [Nonempty α]
+    [Fintype β] [Nonempty β] (g : β → ℝ) :
+    uniformExpect (α × β) (fun p => g p.2) = uniformExpect β g := by
+  rw [uniformExpect_prod]
+  exact uniformExpect_const α (uniformExpect β g)
+
+/-- Factor out unused components from a product expectation. Given a 5-tuple
+`A × B × C × D × E`, if the function only uses the `A`, `C`, and `E` components,
+the expectation equals the expectation over `A × C × E`. -/
+theorem uniformExpect_prod5_ignore_bd {A B C D E : Type*}
+    [Fintype A] [Nonempty A] [Fintype B] [Nonempty B]
+    [Fintype C] [Nonempty C] [Fintype D] [Nonempty D] [Fintype E] [Nonempty E]
+    (g : A → C → E → ℝ) :
+    uniformExpect (A × B × C × D × E)
+      (fun r => g r.1 r.2.2.1 r.2.2.2.2) =
+    uniformExpect (A × C × E)
+      (fun r => g r.1 r.2.1 r.2.2) := by
+  simp only [uniformExpect_eq, Fintype.card_prod, Nat.cast_mul]
+  simp_rw [Fintype.sum_prod_type]
+  simp only [Finset.sum_const, Finset.card_univ, nsmul_eq_mul]
+  have hB : (Fintype.card B : ℝ) ≠ 0 := Nat.cast_ne_zero.mpr Fintype.card_ne_zero
+  have hD : (Fintype.card D : ℝ) ≠ 0 := Nat.cast_ne_zero.mpr Fintype.card_ne_zero
+  field_simp
+  simp_rw [← Finset.mul_sum]
+  ring
+
+/-- Factor out unused components from a product expectation. Given a 5-tuple
+`A × B × C × D × E`, if the function only uses the `B`, `C`, and `D` components,
+the expectation equals the expectation over `B × C × D`. -/
+theorem uniformExpect_prod5_ignore_ae {A B C D E : Type*}
+    [Fintype A] [Nonempty A] [Fintype B] [Nonempty B]
+    [Fintype C] [Nonempty C] [Fintype D] [Nonempty D] [Fintype E] [Nonempty E]
+    (g : B → C → D → ℝ) :
+    uniformExpect (A × B × C × D × E)
+      (fun r => g r.2.1 r.2.2.1 r.2.2.2.1) =
+    uniformExpect (B × C × D)
+      (fun r => g r.1 r.2.1 r.2.2) := by
+  simp only [uniformExpect_eq, Fintype.card_prod, Nat.cast_mul]
+  simp_rw [Fintype.sum_prod_type]
+  simp only [Finset.sum_const, Finset.card_univ, nsmul_eq_mul]
+  have hA : (Fintype.card A : ℝ) ≠ 0 := Nat.cast_ne_zero.mpr Fintype.card_ne_zero
+  have hE : (Fintype.card E : ℝ) ≠ 0 := Nat.cast_ne_zero.mpr Fintype.card_ne_zero
+  field_simp
+  simp_rw [← Finset.mul_sum]
+  -- Unlike `ignore_bd`, `field_simp` already leaves the goal in normal form here
+
 end Cslib.Probability
 
 end

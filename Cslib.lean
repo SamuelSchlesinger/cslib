@@ -47,6 +47,7 @@ public import Cslib.Computability.URM.Defs
 public import Cslib.Computability.URM.Execution
 public import Cslib.Computability.URM.StandardForm
 public import Cslib.Computability.URM.StraightLine
+public import Cslib.Cryptography.Assumptions.DiscreteLog
 public import Cslib.Cryptography.Foundations.Indistinguishability
 public import Cslib.Cryptography.Foundations.Negligible
 public import Cslib.Cryptography.Foundations.PolyTimeDistinguisher
@@ -59,6 +60,10 @@ public import Cslib.Cryptography.Primitives.OneWayFunction
 public import Cslib.Cryptography.Primitives.PRF
 public import Cslib.Cryptography.Primitives.PRG
 public import Cslib.Cryptography.Primitives.Signature
+public import Cslib.Cryptography.Protocols.Combinators
+public import Cslib.Cryptography.Protocols.FiatShamir
+public import Cslib.Cryptography.Protocols.Schnorr
+public import Cslib.Cryptography.Protocols.SigmaProtocol
 public import Cslib.Cryptography.Reductions.HashToCommitment
 public import Cslib.Cryptography.Reductions.PRFtoEncryption
 public import Cslib.Cryptography.Reductions.PRFtoMAC
