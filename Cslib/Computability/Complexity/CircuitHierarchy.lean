@@ -63,8 +63,8 @@ families over basis `Op` whose circuit at input size `n` has at most
 
 The well-formedness condition (`GatesWellFormed`) requires that every gate's
 input list has a length admitted by its operation's arity. This matches the
-standard mathematical convention and ensures that circuit evaluation never
-falls back to the defensive `false` default for arity mismatches. -/
+standard mathematical convention and ensures that circuit evaluation always
+returns `some` (never `none` due to arity mismatches). -/
 def SizeDepth (Op : Type*) [Basis Op]
     (s d : ℕ → ℕ) : Set (Set (List Bool)) :=
   { L | ∃ C : CircuitFamily Op,
@@ -158,6 +158,22 @@ private theorem ncToAc_eval (op : NCOp) (bs : List Bool)
     match bs, h with
     | [b], _ => simp [ncToAc, Basis.eval]
 
+/-- `mapM` for `Option` preserves list length. -/
+private theorem mapM_option_length {f : α → Option β} {xs : List α} {ys : List β}
+    (h : xs.mapM f = some ys) : ys.length = xs.length := by
+  induction xs generalizing ys with
+  | nil =>
+    have : ys = [] := by simpa [List.mapM_nil] using h
+    subst this; rfl
+  | cons x xs ih =>
+    rw [List.mapM_cons] at h
+    match hfx : f x, h with
+    | some a, h =>
+      match hxs : xs.mapM f, h with
+      | some bs, h =>
+        have : ys = a :: bs := by simpa [hfx, hxs] using h.symm
+        subst this; simp [ih hxs]
+
 /-- The embedding preserves circuit evaluation for well-formed circuits.
 
 Well-formedness ensures every gate has the correct number of inputs for its
@@ -168,26 +184,28 @@ private theorem ncToAc_circuit_eval {n : ℕ} (C : Circuit NCOp n)
     (input : Fin n → Bool) :
     (C.mapOp ncToAc).eval input = C.eval input := by
   simp only [Circuit.eval, Circuit.mapOp]
-  -- We prove the stronger statement that the full wire lists agree after
+  -- We prove the stronger statement that the foldls agree after
   -- processing any prefix of gates, as long as all processed gates are well-formed.
   suffices ∀ (gs : List (Gate NCOp))
     (hgs : ∀ g ∈ gs, (Basis.arity g.op).admits g.inputs.length)
-    (acc : List Bool),
+    (acc : Option (List Bool)),
     (gs.map (Gate.mapOp ncToAc)).foldl
-      (fun wires gate =>
-        wires ++ [if h : (Basis.arity gate.op).admits
-                    (gate.inputs.map (wires.getD · false)).length
-                  then Basis.eval gate.op (gate.inputs.map (wires.getD · false)) h
-                  else false])
+      (fun (acc : Option (List Bool)) gate =>
+        acc.bind fun wires =>
+          (gate.inputs.mapM fun i => wires[i]?).bind fun bs =>
+            if h : (Basis.arity gate.op).admits bs.length then
+              some (wires ++ [Basis.eval gate.op bs h])
+            else none)
       acc =
     gs.foldl
-      (fun wires gate =>
-        wires ++ [if h : (Basis.arity gate.op).admits
-                    (gate.inputs.map (wires.getD · false)).length
-                  then Basis.eval gate.op (gate.inputs.map (wires.getD · false)) h
-                  else false])
+      (fun (acc : Option (List Bool)) gate =>
+        acc.bind fun wires =>
+          (gate.inputs.mapM fun i => wires[i]?).bind fun bs =>
+            if h : (Basis.arity gate.op).admits bs.length then
+              some (wires ++ [Basis.eval gate.op bs h])
+            else none)
       acc by
-    exact congr_arg (·.getD C.outputWire false) (this C.gates hWF _)
+    exact congr_arg (·.bind fun wires => wires[C.outputWire]?) (this C.gates hWF _)
   intro gs hgs
   induction gs with
   | nil => simp
@@ -197,25 +215,44 @@ private theorem ncToAc_circuit_eval {n : ℕ} (C : Circuit NCOp n)
     -- The gate g is well-formed: its NCOp arity admits g.inputs.length
     have hg_wf : (Basis.arity g.op).admits g.inputs.length :=
       hgs g (by simp)
-    -- The number of inputs doesn't change (mapOp preserves inputs)
-    set bs := g.inputs.map (acc.getD · false)
-    -- NCOp admits the input list length (same as g.inputs.length)
-    have hbs : (Basis.arity g.op).admits bs.length := by
-      simp only [bs, List.length_map]; exact hg_wf
-    -- ACOp also admits it
-    have hbs' : (Basis.arity (ncToAc g.op)).admits bs.length :=
-      ncToAc_admits g.op bs.length hbs
-    -- Both sides evaluate the gate (no defensive false)
-    have h_output :
-      (if h : (Basis.arity (ncToAc g.op)).admits bs.length
-       then Basis.eval (ncToAc g.op) bs h
-       else false) =
-      (if h : (Basis.arity g.op).admits bs.length
-       then Basis.eval g.op bs h
-       else false) := by
-      rw [dif_pos hbs', dif_pos hbs]
-      exact ncToAc_eval g.op bs hbs
-    rw [h_output]
+    -- For any wires, the gate evaluation gives the same result
+    have h_output : ∀ (wires : List Bool),
+      ((g.inputs.mapM fun i => wires[i]?).bind fun bs =>
+        if h : (Basis.arity (ncToAc g.op)).admits bs.length then
+          some (wires ++ [Basis.eval (ncToAc g.op) bs h])
+        else none) =
+      ((g.inputs.mapM fun i => wires[i]?).bind fun bs =>
+        if h : (Basis.arity g.op).admits bs.length then
+          some (wires ++ [Basis.eval g.op bs h])
+        else none) := by
+      intro wires
+      cases hm : (g.inputs.mapM fun i => wires[i]?) with
+      | none => rfl
+      | some bs =>
+        simp only [Option.bind_some]
+        have hbs_len : bs.length = g.inputs.length :=
+          mapM_option_length hm
+        have hbs : (Basis.arity g.op).admits bs.length := hbs_len ▸ hg_wf
+        have hbs' : (Basis.arity (ncToAc g.op)).admits bs.length :=
+          ncToAc_admits g.op bs.length hbs
+        rw [dif_pos hbs', dif_pos hbs]
+        simp only [ncToAc_eval g.op bs hbs]
+    -- Simplify: the bind over acc with h_output means both sides agree
+    have h_step :
+      (acc.bind fun wires =>
+        (g.inputs.mapM fun i => wires[i]?).bind fun bs =>
+          if h : (Basis.arity (ncToAc g.op)).admits bs.length then
+            some (wires ++ [Basis.eval (ncToAc g.op) bs h])
+          else none) =
+      (acc.bind fun wires =>
+        (g.inputs.mapM fun i => wires[i]?).bind fun bs =>
+          if h : (Basis.arity g.op).admits bs.length then
+            some (wires ++ [Basis.eval g.op bs h])
+          else none) := by
+      cases acc with
+      | none => rfl
+      | some wires => simp only [Option.bind_some]; exact h_output wires
+    rw [h_step]
     exact ih (fun g' hg' => hgs g' (by simp [hg'])) _
 
 /-- **NC^k ⊆ AC^k**: every language computable by polynomial-size,
@@ -248,12 +285,12 @@ public theorem NC_subset_AC {k : ℕ} : NC k ⊆ AC k := by
 so they are captured by P/poly. -/
 public theorem NC_subset_SIZE {k : ℕ} :
     NC k ⊆ PPoly (Op := NCOp) := by
-  intro L ⟨p, _, C, hDec, _, hSize, _⟩
-  exact ⟨C, p, hDec, hSize⟩
+  intro L ⟨p, _, C, hDec, hWF, hSize, _⟩
+  exact ⟨C, p, hDec, hWF, hSize⟩
 
 /-- **AC^k ⊆ P/poly**: AC circuits have polynomial size,
 so they are captured by P/poly. -/
 public theorem AC_subset_SIZE {k : ℕ} :
     AC k ⊆ PPoly (Op := ACOp) := by
-  intro L ⟨p, _, C, hDec, _, hSize, _⟩
-  exact ⟨C, p, hDec, hSize⟩
+  intro L ⟨p, _, C, hDec, hWF, hSize, _⟩
+  exact ⟨C, p, hDec, hWF, hSize⟩

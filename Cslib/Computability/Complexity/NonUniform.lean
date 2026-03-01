@@ -43,7 +43,8 @@ variable {Symbol : Type} [Inhabited Symbol] [Fintype Symbol]
 /-- `SIZE s` is the class of languages decidable by circuit families whose circuit
 at input size `n` has at most `s n` gates. -/
 def SIZE (s : ℕ → ℕ) : Set (Set (List Bool)) :=
-  { L | ∃ C : CircuitFamily Op, C.Decides L ∧ ∀ n, (C n).size ≤ s n }
+  { L | ∃ C : CircuitFamily Op,
+    C.Decides L ∧ (∀ n, (C n).GatesWellFormed) ∧ ∀ n, (C n).size ≤ s n }
 
 /-- **P/poly** (circuit-based): the class of languages decidable by polynomial-size
 circuit families. A language is in P/poly if there exists a circuit family and a
@@ -51,7 +52,7 @@ polynomial `p` such that the family decides the language and every circuit has a
 most `p(n)` gates. -/
 def PPoly : Set (Set (List Bool)) :=
   { L | ∃ C : CircuitFamily Op, ∃ p : Polynomial ℕ,
-    C.Decides L ∧ ∀ n, (C n).size ≤ p.eval n }
+    C.Decides L ∧ (∀ n, (C n).GatesWellFormed) ∧ ∀ n, (C n).size ≤ p.eval n }
 
 /-- **P/poly** (advice-based): the class of languages decidable by a polynomial-time
 Turing machine augmented with polynomial-length advice strings. The advice string
@@ -71,15 +72,15 @@ open Cslib.Circuits Polynomial Turing SingleTapeTM
 /-- `SIZE` is monotone: if `s ≤ s'` pointwise then `SIZE s ⊆ SIZE s'`. -/
 theorem SIZE_mono {Op : Type*} [Basis Op] {s s' : ℕ → ℕ} (h : ∀ n, s n ≤ s' n) :
     SIZE (Op := Op) s ⊆ SIZE (Op := Op) s' := by
-  intro L ⟨C, hDecides, hSize⟩
-  exact ⟨C, hDecides, fun n => Nat.le_trans (hSize n) (h n)⟩
+  intro L ⟨C, hDecides, hWF, hSize⟩
+  exact ⟨C, hDecides, hWF, fun n => Nat.le_trans (hSize n) (h n)⟩
 
 /-- If `s` is bounded by a polynomial then `SIZE s ⊆ PPoly`. -/
 theorem SIZE_subset_PPoly {Op : Type*} [Basis Op] {s : ℕ → ℕ}
     {p : Polynomial ℕ} (h : ∀ n, s n ≤ p.eval n) :
     SIZE (Op := Op) s ⊆ PPoly (Op := Op) := by
-  intro L ⟨C, hDecides, hSize⟩
-  exact ⟨C, p, hDecides, fun n => Nat.le_trans (hSize n) (h n)⟩
+  intro L ⟨C, hDecides, hWF, hSize⟩
+  exact ⟨C, p, hDecides, hWF, fun n => Nat.le_trans (hSize n) (h n)⟩
 
 /-- **P ⊆ P/poly** (advice-based): Every language in P is in P/poly.
 
