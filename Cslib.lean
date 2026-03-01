@@ -29,7 +29,6 @@ public import Cslib.Computability.Circuits.Formula.Measures
 public import Cslib.Computability.Circuits.Formula.Std
 public import Cslib.Computability.Complexity.CircuitHierarchy
 public import Cslib.Computability.Complexity.Classes
-public import Cslib.Computability.Complexity.Closure
 public import Cslib.Computability.Complexity.NonUniform
 public import Cslib.Computability.Complexity.Reductions
 public import Cslib.Computability.Complexity.Space

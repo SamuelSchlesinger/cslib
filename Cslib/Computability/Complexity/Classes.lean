@@ -101,3 +101,19 @@ public theorem ComplexityP_subset_ComplexityNP
     rw [hDecides]
     have : w = [] := List.eq_nil_of_length_eq_zero (Nat.le_zero.mp hw)
     rwa [this, List.append_nil] at hverify
+
+/-- **NP ⊆ coNP ↔ ∀ L ∈ NP, Lᶜ ∈ NP**. This is just the unfolding of
+the definitions: coNP is defined as `{L | Lᶜ ∈ NP}`, so `NP ⊆ coNP`
+means every NP language has its complement in NP. -/
+public theorem ComplexityNP_subset_ComplexityCoNP_iff
+    {Symbol : Type} [Inhabited Symbol] :
+    ComplexityNP (Symbol := Symbol) ⊆ ComplexityCoNP ↔
+    ∀ L ∈ ComplexityNP (Symbol := Symbol), Lᶜ ∈ ComplexityNP := by
+  constructor
+  · intro h L hL
+    have := h hL
+    simp only [ComplexityCoNP, Set.mem_setOf_eq] at this
+    exact this
+  · intro h L hL
+    simp only [ComplexityCoNP, Set.mem_setOf_eq]
+    exact h L hL
