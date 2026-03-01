@@ -25,14 +25,14 @@ Each gate references its inputs by wire index, and the circuit designates one wi
 output.
 
 There is no well-formedness constraint in the `Circuit` structure. Instead, `Circuit.eval`
-uses defensive evaluation: out-of-bounds wire references produce `false`, and arity
-mismatches produce `false`. This mirrors the `Formula.eval` design.
+returns `Option Bool`: out-of-bounds wire references and arity mismatches produce `none`.
+The `WellFormed` predicate ensures that well-formed circuits always evaluate to `some`.
 
 ## Main definitions
 
 - `Gate` — a gate with an operation and a list of input wire indices
 - `Circuit` — a circuit with `n` input variables, a list of gates, and an output wire
-- `Circuit.eval` — evaluate a circuit on an input assignment
+- `Circuit.eval` — evaluate a circuit on an input assignment, returning `Option Bool`
 - `Circuit.size` — number of gates in a circuit
 - `Circuit.depth` — longest path from an input to the output
 - `CircuitFamily` — a family of circuits indexed by input size
@@ -81,18 +81,19 @@ variable {Op : Type*} {n : ℕ}
 /-- Evaluate a circuit on an input assignment.
 
 Builds a list of wire values by folding over the gates in order. Each gate reads its
-inputs from previous wire values (defaulting to `false` for out-of-bounds references)
-and appends its output. The result is the value on `outputWire`. -/
+inputs from previous wire values. Out-of-bounds wire references or arity mismatches
+produce `none`. The result is the value on `outputWire`, or `none` if out of bounds. -/
 @[simp, scoped grind =]
-def eval [Basis Op] (C : Circuit Op n) (input : Fin n → Bool) : Bool :=
+def eval [Basis Op] (C : Circuit Op n) (input : Fin n → Bool) : Option Bool :=
   let inputList := List.ofFn input
-  let allWires := C.gates.foldl (fun wires gate =>
-    let gateInputs := gate.inputs.map (wires.getD · false)
-    let output := if h : (Basis.arity gate.op).admits gateInputs.length
-                  then Basis.eval gate.op gateInputs h
-                  else false
-    wires ++ [output]) inputList
-  allWires.getD C.outputWire false
+  let allWires := C.gates.foldl (fun (acc : Option (List Bool)) gate =>
+    acc.bind fun wires =>
+      (gate.inputs.mapM fun i => wires[i]?).bind fun bs =>
+        if h : (Basis.arity gate.op).admits bs.length then
+          some (wires ++ [Basis.eval gate.op bs h])
+        else
+          none) (some inputList)
+  allWires.bind fun wires => wires[C.outputWire]?
 
 /-! ### Measures -/
 
@@ -117,9 +118,85 @@ def depth [Basis Op] (C : Circuit Op n) : ℕ :=
 
 /-- A circuit is **gates-well-formed** if every gate's input list has a length
 admitted by the gate's operation arity. This ensures that `eval` never hits the
-defensive `false` fallback for arity mismatches. -/
+`none` fallback for arity mismatches. -/
 def GatesWellFormed [Basis Op] (C : Circuit Op n) : Prop :=
   ∀ g ∈ C.gates, (Basis.arity g.op).admits g.inputs.length
+
+/-- A circuit has **well-formed wires** if every gate only references wires that
+are already defined (input wires or outputs of earlier gates). -/
+def WiresWellFormed (C : Circuit Op n) : Prop :=
+  ∀ (i : ℕ) (hi : i < C.gates.length),
+    ∀ w ∈ (C.gates.get ⟨i, hi⟩).inputs, w < n + i
+
+/-- A circuit has a **valid output wire** if the output wire index refers to
+a wire that actually exists (input or gate output). -/
+def OutputWireValid (C : Circuit Op n) : Prop :=
+  C.outputWire < n + C.gates.length
+
+/-- A circuit is **well-formed** if its gates have correct arities, its wire
+references are in bounds, and its output wire is valid. Well-formed circuits
+always evaluate to `some`. -/
+def WellFormed [Basis Op] (C : Circuit Op n) : Prop :=
+  C.GatesWellFormed ∧ C.WiresWellFormed ∧ C.OutputWireValid
+
+/-- mapM over getElem? succeeds when all indices are in bounds. -/
+private theorem mapM_getElem_some (wires : List Bool) (inputs : List ℕ)
+    (h : ∀ w ∈ inputs, w < wires.length) :
+    ∃ bs, (inputs.mapM fun i => wires[i]?) = some bs ∧ bs.length = inputs.length := by
+  induction inputs with
+  | nil => exact ⟨[], rfl, rfl⟩
+  | cons w ws ih =>
+    have hw : w < wires.length := h w (by simp)
+    obtain ⟨bs', hbs', hlen'⟩ := ih (fun w' hw' => h w' (by simp [hw']))
+    refine ⟨wires[w] :: bs', ?_, by simp [hlen']⟩
+    simp [List.mapM_cons, List.getElem?_eq_getElem hw, hbs']
+
+/-- Well-formed circuits always evaluate to `some`. -/
+theorem WellFormed.eval_isSome [Basis Op] (C : Circuit Op n) (hWF : C.WellFormed)
+    (input : Fin n → Bool) : (C.eval input).isSome = true := by
+  obtain ⟨hGates, hWires, hOut⟩ := hWF
+  -- Prove the foldl produces some wires with length n + gates.length
+  suffices h : ∀ (gs : List (Gate Op)) (acc : List Bool)
+      (harity : ∀ g ∈ gs, (Basis.arity g.op).admits g.inputs.length)
+      (hwires : ∀ (i : ℕ) (hi : i < gs.length),
+        ∀ w ∈ (gs.get ⟨i, hi⟩).inputs, w < acc.length + i),
+      ∃ wires, gs.foldl (fun (a : Option (List Bool)) gate =>
+        a.bind fun wires =>
+          (gate.inputs.mapM fun i => wires[i]?).bind fun bs =>
+            if h : (Basis.arity gate.op).admits bs.length then
+              some (wires ++ [Basis.eval gate.op bs h])
+            else none) (some acc) = some wires ∧
+        wires.length = acc.length + gs.length by
+    obtain ⟨wires, hfold, hlen⟩ := h C.gates (List.ofFn input) hGates
+      (by intro i hi w hw; have := hWires i hi w hw; simp [List.length_ofFn]; omega)
+    change (eval C input).isSome = true
+    unfold eval
+    simp only [hfold, Option.bind_some]
+    have hlt : C.outputWire < wires.length := by
+      rw [hlen, List.length_ofFn]; exact hOut
+    rw [List.getElem?_eq_getElem hlt]; rfl
+  intro gs
+  induction gs with
+  | nil => intro acc _ _; exact ⟨acc, rfl, by simp⟩
+  | cons g gs ih =>
+    intro acc harity hwires
+    simp only [List.foldl_cons]
+    have hg_arity := harity g (by simp)
+    have hg_wires : ∀ w ∈ g.inputs, w < acc.length := by
+      intro w hw; have := hwires 0 (by simp) w hw; omega
+    obtain ⟨bs, hbs, hbs_len⟩ := mapM_getElem_some acc g.inputs hg_wires
+    have hadmits : (Basis.arity g.op).admits bs.length := hbs_len ▸ hg_arity
+    simp only [Option.bind_some, hbs, dif_pos hadmits]
+    obtain ⟨wires, hfold, hlen⟩ := ih (acc ++ [Basis.eval g.op bs hadmits])
+      (fun g' hg' => harity g' (by simp [hg']))
+      (fun i hi w hw => by
+        have := hwires (i + 1) (Nat.succ_lt_succ hi) w hw
+        simp only [List.length_append, List.length_cons, List.length_nil]
+        omega)
+    refine ⟨wires, hfold, ?_⟩
+    simp only [List.length_append, List.length_singleton] at hlen
+    simp only [List.length_cons]
+    omega
 
 /-! ### Gate and circuit mapping -/
 
@@ -155,7 +232,6 @@ not on gate operations. -/
 theorem depth_mapOp [Basis Op] [Basis Op'] (f : Op → Op') (C : Circuit Op n) :
     (C.mapOp f).depth = C.depth := by
   simp only [depth, mapOp]
-  -- The depth foldl step function only uses gate.inputs, which mapOp preserves
   suffices ∀ (gs : List (Gate Op)) (acc : List ℕ),
     (gs.map (Gate.mapOp f)).foldl
       (fun depths gate =>
@@ -185,22 +261,25 @@ theorem eval_mapOp [Basis Op] [Basis Op'] (f : Op → Op') (C : Circuit Op n)
     (input : Fin n → Bool) :
     (C.mapOp f).eval input = C.eval input := by
   simp only [eval, mapOp]
-  suffices ∀ (gs : List (Gate Op)) (acc : List Bool),
+  -- Prove the foldls produce the same result, then the bind is the same
+  suffices ∀ (gs : List (Gate Op)) (acc : Option (List Bool)),
     (gs.map (Gate.mapOp f)).foldl
-      (fun wires gate =>
-        wires ++ [if h : (Basis.arity gate.op).admits
-                    (gate.inputs.map (wires.getD · false)).length
-                  then Basis.eval gate.op (gate.inputs.map (wires.getD · false)) h
-                  else false])
+      (fun (acc : Option (List Bool)) gate =>
+        acc.bind fun wires =>
+          (gate.inputs.mapM fun i => wires[i]?).bind fun bs =>
+            if h : (Basis.arity gate.op).admits bs.length then
+              some (wires ++ [Basis.eval gate.op bs h])
+            else none)
       acc =
     gs.foldl
-      (fun wires gate =>
-        wires ++ [if h : (Basis.arity gate.op).admits
-                    (gate.inputs.map (wires.getD · false)).length
-                  then Basis.eval gate.op (gate.inputs.map (wires.getD · false)) h
-                  else false])
+      (fun (acc : Option (List Bool)) gate =>
+        acc.bind fun wires =>
+          (gate.inputs.mapM fun i => wires[i]?).bind fun bs =>
+            if h : (Basis.arity gate.op).admits bs.length then
+              some (wires ++ [Basis.eval gate.op bs h])
+            else none)
       acc by
-    exact congr_arg (·.getD C.outputWire false) (this C.gates _)
+    exact congr_arg (·.bind fun wires => wires[C.outputWire]?) (this C.gates _)
   intro gs
   induction gs with
   | nil => simp
@@ -208,23 +287,44 @@ theorem eval_mapOp [Basis Op] [Basis Op'] (f : Op → Op') (C : Circuit Op n)
     intro acc
     simp only [List.map_cons, List.foldl_cons, Gate.mapOp]
     -- Show the gate output is the same for f g.op vs g.op with same inputs
-    have h_output :
-      (if h : (Basis.arity (f g.op)).admits
-              (g.inputs.map (acc.getD · false)).length
-       then Basis.eval (f g.op) (g.inputs.map (acc.getD · false)) h
-       else false) =
-      (if h : (Basis.arity g.op).admits
-              (g.inputs.map (acc.getD · false)).length
-       then Basis.eval g.op (g.inputs.map (acc.getD · false)) h
-       else false) := by
-      set bs := g.inputs.map (acc.getD · false)
-      by_cases hadmits : (Basis.arity g.op).admits bs.length
-      · have hadmits' : (Basis.arity (f g.op)).admits bs.length := by rw [harity]; exact hadmits
-        rw [dif_pos hadmits', dif_pos hadmits]
-        exact heval g.op bs hadmits
-      · have hadmits' : ¬(Basis.arity (f g.op)).admits bs.length := by rw [harity]; exact hadmits
-        rw [dif_neg hadmits', dif_neg hadmits]
-    rw [h_output]
+    have h_output : ∀ (wires : List Bool),
+      ((g.inputs.mapM fun i => wires[i]?).bind fun bs =>
+        if h : (Basis.arity (f g.op)).admits bs.length then
+          some (wires ++ [Basis.eval (f g.op) bs h])
+        else none) =
+      ((g.inputs.mapM fun i => wires[i]?).bind fun bs =>
+        if h : (Basis.arity g.op).admits bs.length then
+          some (wires ++ [Basis.eval g.op bs h])
+        else none) := by
+      intro wires
+      cases hm : (g.inputs.mapM fun i => wires[i]?) with
+      | none => rfl
+      | some bs =>
+        simp only [Option.bind_some]
+        by_cases hadmits : (Basis.arity g.op).admits bs.length
+        · have hadmits' : (Basis.arity (f g.op)).admits bs.length := by
+            rw [harity]; exact hadmits
+          rw [dif_pos hadmits', dif_pos hadmits]
+          simp only [heval g.op bs hadmits]
+        · have hadmits' : ¬(Basis.arity (f g.op)).admits bs.length := by
+            rw [harity]; exact hadmits
+          rw [dif_neg hadmits', dif_neg hadmits]
+    -- Simplify: the bind over acc with h_output means both sides agree
+    have h_step :
+      (acc.bind fun wires =>
+        (g.inputs.mapM fun i => wires[i]?).bind fun bs =>
+          if h : (Basis.arity (f g.op)).admits bs.length then
+            some (wires ++ [Basis.eval (f g.op) bs h])
+          else none) =
+      (acc.bind fun wires =>
+        (g.inputs.mapM fun i => wires[i]?).bind fun bs =>
+          if h : (Basis.arity g.op).admits bs.length then
+            some (wires ++ [Basis.eval g.op bs h])
+          else none) := by
+      cases acc with
+      | none => rfl
+      | some wires => simp only [Option.bind_some]; exact h_output wires
+    rw [h_step]
     exact ih _
 
 /-! ### Basic lemmas -/
@@ -246,9 +346,9 @@ variable {Op : Type*}
 
 /-- A circuit family `C` **decides** a language `L : Set (List Bool)` when
 for every input `x`, membership in `L` is equivalent to the circuit of size `x.length`
-accepting `x`. -/
+evaluating to `some true`. -/
 def Decides [Basis Op] (C : CircuitFamily Op) (L : Set (List Bool)) : Prop :=
-  ∀ x : List Bool, x ∈ L ↔ (C x.length).eval (x.get ·) = true
+  ∀ x : List Bool, x ∈ L ↔ (C x.length).eval (x.get ·) = some true
 
 end CircuitFamily
 

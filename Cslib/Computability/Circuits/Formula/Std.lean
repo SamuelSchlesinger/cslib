@@ -16,14 +16,17 @@ Convenience constructors and evaluation/measure lemmas for formulas over the sta
 bounded fan-in basis (`NCOp`): binary AND, binary OR, and unary NOT.
 
 The smart constructors `Formula.and`, `Formula.or`, and `Formula.not` build formulas
-with the correct number of children for each operation, so the arity check in
-`Formula.eval` always succeeds for formulas built this way.
+with the correct number of children for each operation, so `Formula.eval` always
+returns `some` for formulas built this way.
 
 ## Main definitions
 
 - `Formula.and`, `Formula.or`, `Formula.not` — smart constructors that guarantee
   correct arity
-- `eval_and`, `eval_or`, `eval_not` — evaluation reduces to native Boolean operations
+- `eval_and`, `eval_or`, `eval_not` — evaluation reduces to `Option.bind`/`Option.map`
+  of native Boolean operations
+- `WellFormed_and`, `WellFormed_or`, `WellFormed_not`, `WellFormed_var` — smart
+  constructors produce well-formed formulas
 - `eval_not_not` — double negation elimination
 - `deMorgan_and`, `deMorgan_or` — De Morgan's laws at the formula level
 - `size_and`, `size_or`, `size_not` — size of standard constructs
@@ -55,29 +58,75 @@ Constructs `.gate .not [a]`, which has exactly 1 child matching `NCOp.not`'s ari
 @[scoped grind =]
 def not (a : Formula Var NCOp) : Formula Var NCOp := .gate .not [a]
 
+/-! ### Well-formedness lemmas -/
+
+@[simp]
+theorem WellFormed_var : (Formula.var v : Formula Var NCOp).WellFormed := by
+  unfold WellFormed; trivial
+
+@[simp]
+theorem WellFormed_and {a b : Formula Var NCOp}
+    (ha : a.WellFormed) (hb : b.WellFormed) : (Formula.and a b).WellFormed := by
+  unfold Formula.and WellFormed
+  exact ⟨by simp [Arity.admits], fun c hc => by
+    simp only [List.mem_cons, List.not_mem_nil, or_false] at hc
+    rcases hc with rfl | rfl <;> assumption⟩
+
+@[simp]
+theorem WellFormed_or {a b : Formula Var NCOp}
+    (ha : a.WellFormed) (hb : b.WellFormed) : (Formula.or a b).WellFormed := by
+  unfold Formula.or WellFormed
+  exact ⟨by simp [Arity.admits], fun c hc => by
+    simp only [List.mem_cons, List.not_mem_nil, or_false] at hc
+    rcases hc with rfl | rfl <;> assumption⟩
+
+@[simp]
+theorem WellFormed_not {a : Formula Var NCOp}
+    (ha : a.WellFormed) : (Formula.not a).WellFormed := by
+  unfold Formula.not WellFormed
+  exact ⟨by simp [Arity.admits], fun c hc => by
+    simp only [List.mem_cons, List.not_mem_nil, or_false] at hc; rw [hc]; exact ha⟩
+
 /-! ### Evaluation lemmas -/
 
 @[simp, scoped grind =]
 theorem eval_and (v : Var → Bool) (a b : Formula Var NCOp) :
-    (Formula.and a b).eval v = (a.eval v && b.eval v) := by
-  simp [Formula.and, eval, Basis.eval, Arity.admits]
+    (Formula.and a b).eval v =
+      (a.eval v).bind fun a' => (b.eval v).map (a' && ·) := by
+  simp only [Formula.and, eval]
+  cases ha : eval v a with
+  | none => simp [ha]
+  | some a' =>
+    cases hb : eval v b with
+    | none => simp [ha, hb]
+    | some b' => simp [ha, hb, Basis.eval, Arity.admits]
 
 @[simp, scoped grind =]
 theorem eval_or (v : Var → Bool) (a b : Formula Var NCOp) :
-    (Formula.or a b).eval v = (a.eval v || b.eval v) := by
-  simp [Formula.or, eval, Basis.eval, Arity.admits]
+    (Formula.or a b).eval v =
+      (a.eval v).bind fun a' => (b.eval v).map (a' || ·) := by
+  simp only [Formula.or, eval]
+  cases ha : eval v a with
+  | none => simp [ha]
+  | some a' =>
+    cases hb : eval v b with
+    | none => simp [ha, hb]
+    | some b' => simp [ha, hb, Basis.eval, Arity.admits]
 
 @[simp, scoped grind =]
 theorem eval_not (v : Var → Bool) (a : Formula Var NCOp) :
-    (Formula.not a).eval v = !(a.eval v) := by
-  simp [Formula.not, eval, Basis.eval, Arity.admits]
+    (Formula.not a).eval v = (a.eval v).map (!·) := by
+  simp only [Formula.not, eval]
+  cases ha : eval v a with
+  | none => simp [ha]
+  | some a' => simp [ha, Basis.eval, Arity.admits]
 
 /-! ### Double negation -/
 
 @[simp, scoped grind =]
 theorem eval_not_not (v : Var → Bool) (a : Formula Var NCOp) :
     (Formula.not (Formula.not a)).eval v = a.eval v := by
-  simp [eval_not, Bool.not_not]
+  simp only [eval_not, Option.map_map, Function.comp_def, Bool.not_not, Option.map_id']
 
 /-! ### De Morgan's laws -/
 
@@ -85,13 +134,17 @@ theorem eval_not_not (v : Var → Bool) (a : Formula Var NCOp) :
 theorem deMorgan_and (v : Var → Bool) (a b : Formula Var NCOp) :
     (Formula.not (Formula.and a b)).eval v =
     (Formula.or (Formula.not a) (Formula.not b)).eval v := by
-  simp [eval_not, eval_and, eval_or]
+  simp only [eval_not, eval_and, eval_or]
+  cases a.eval v <;> cases b.eval v <;>
+    simp [Option.bind, Option.map, Bool.not_and]
 
 @[scoped grind =]
 theorem deMorgan_or (v : Var → Bool) (a b : Formula Var NCOp) :
     (Formula.not (Formula.or a b)).eval v =
     (Formula.and (Formula.not a) (Formula.not b)).eval v := by
-  simp [eval_not, eval_and, eval_or]
+  simp only [eval_not, eval_and, eval_or]
+  cases a.eval v <;> cases b.eval v <;>
+    simp [Option.bind, Option.map, Bool.not_or]
 
 /-! ### Measure lemmas for standard constructors -/
 

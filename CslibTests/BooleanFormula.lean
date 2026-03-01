@@ -27,24 +27,24 @@ def z : Formula TestVar NCOp := .var .z
 
 /-! ### Evaluation tests -/
 
-example : (Formula.and x y).eval assignment = false := by
+example : (Formula.and x y).eval assignment = some false := by
   simp [x, y, assignment]
 
-example : (Formula.or x y).eval assignment = true := by
+example : (Formula.or x y).eval assignment = some true := by
   simp [x, y, assignment]
 
-example : (Formula.not y).eval assignment = true := by
+example : (Formula.not y).eval assignment = some true := by
   simp [y, assignment]
 
-example : (Formula.not (Formula.or x z)).eval assignment = false := by
+example : (Formula.not (Formula.or x z)).eval assignment = some false := by
   simp [x, z, assignment]
 
-example : (Formula.and x (Formula.or y z)).eval assignment = true := by
+example : (Formula.and x (Formula.or y z)).eval assignment = some true := by
   simp [x, y, z, assignment]
 
 /-! ### Double negation -/
 
-example : (Formula.not (Formula.not x)).eval assignment = true := by
+example : (Formula.not (Formula.not x)).eval assignment = some true := by
   simp [x, assignment]
 
 /-! ### Size tests -/
