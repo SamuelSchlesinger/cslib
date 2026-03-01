@@ -52,7 +52,6 @@ noncomputable def PRG.toEncryptionScheme (G : PRG)
   randomnessNonempty := fun _ => inferInstance
   encrypt n k m _ := G.stretch n k + m
   decrypt n k c := some (c - G.stretch n k)
-  efficient := G.efficient
 
 /-- The PRG-based stream cipher is correct. -/
 theorem PRG.toEncryptionScheme_correct (G : PRG)

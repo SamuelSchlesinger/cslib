@@ -51,6 +51,7 @@ public import Cslib.Computability.URM.StraightLine
 public import Cslib.Cryptography.Assumptions.DiscreteLog
 public import Cslib.Cryptography.Foundations.Indistinguishability
 public import Cslib.Cryptography.Foundations.Negligible
+public import Cslib.Cryptography.Foundations.OracleInteraction
 public import Cslib.Cryptography.Foundations.PolyTimeDistinguisher
 public import Cslib.Cryptography.Foundations.SecurityGame
 public import Cslib.Cryptography.Primitives.Commitment

@@ -24,7 +24,7 @@ A function is one-way if it is:
 
 ## Main Definitions
 
-* `OWF` — a one-way function family (with efficiency constraint)
+* `OWF` — a one-way function family
 * `OWF.Secure` — information-theoretic security (all adversaries)
 * `OWF.SecureAgainst` — computational security (efficient adversaries only)
 * `OWP` — a one-way permutation (bijective OWF)
@@ -36,11 +36,6 @@ following the standard asymptotic treatment. The inversion game is a
 search game where the adversary's advantage is `Pr[A inverts f on
 random input]`.
 
-The `efficient` field records that the OWF is poly-time computable.
-This is an abstract `Prop`; when the domain and range types carry
-`PolyTimeEncodable` instances, it should be witnessed by
-`IsPolyTimeFamily f` (defined in `PolyTimeDistinguisher.lean`).
-
 ## References
 
 * [O. Goldreich, *Foundations of Cryptography, Vol. 1*][Goldreich2001]
@@ -50,8 +45,8 @@ This is an abstract `Prop`; when the domain and range types carry
 /-- A **one-way function family** indexed by the security parameter.
 
 At each security level `n`, `f n` maps `Domain n` to `Range n`.
-The function is efficiently computable (`efficient`) and should be
-hard to invert (captured by `Secure` / `SecureAgainst`). -/
+The function should be hard to invert (captured by `Secure` /
+`SecureAgainst`). -/
 structure OWF where
   /-- Input domain at security level n -/
   Domain : ℕ → Type
@@ -65,9 +60,6 @@ structure OWF where
   rangeDecEq : ∀ n, DecidableEq (Range n)
   /-- The one-way function -/
   f : (n : ℕ) → Domain n → Range n
-  /-- The function is efficiently (poly-time) computable.
-  When the types are `PolyTimeEncodable`, this should be `IsPolyTimeFamily f`. -/
-  efficient : Prop
 
 /-- An **inversion adversary** for a one-way function: given the security
 parameter and a value `y` in the range, attempts to find `x` such that

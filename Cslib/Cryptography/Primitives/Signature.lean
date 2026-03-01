@@ -6,6 +6,7 @@ Authors: Samuel Schlesinger
 
 module
 
+public import Cslib.Cryptography.Foundations.OracleInteraction
 public import Cslib.Cryptography.Foundations.SecurityGame
 
 @[expose] public section
@@ -20,7 +21,6 @@ key, but cannot be forged without the secret key.
 ## Main Definitions
 
 * `SignatureScheme` — a digital signature scheme (KeyGen, Sign, Verify)
-  with efficiency constraint
 * `EUF_CMA` — existential unforgeability under chosen-message attack
 
 ## Design Notes
@@ -29,9 +29,6 @@ We model signature schemes with abstract types for keys, messages,
 signatures, and randomness. The security notion EUF-CMA says that
 no efficient adversary, even after seeing signatures on chosen messages,
 can produce a valid signature on a new message.
-
-The `efficient` field records that sign and verify are poly-time
-computable.
 
 ## References
 
@@ -74,8 +71,6 @@ structure SignatureScheme where
     Signature n
   /-- Verify a signature with the public key -/
   verify : (n : ℕ) → PublicKey n → Message n → Signature n → Bool
-  /-- The sign and verify algorithms are efficiently (poly-time) computable. -/
-  efficient : Prop
 
 /-! ### Correctness -/
 
@@ -89,39 +84,58 @@ def SignatureScheme.Correct (S : SignatureScheme)
 
 /-! ### EUF-CMA Security -/
 
-/-- An **EUF-CMA adversary** for a signature scheme has access to a
-signing oracle and must produce a valid signature on a message it
-never queried the oracle for.
+/-- An **EUF-CMA adversary** for a signature scheme models adaptive
+chosen-message attack via `OracleInteraction`.
 
-The adversary is modeled as producing a forgery attempt directly;
-the oracle interaction is captured by the `queries` field recording
-the messages the adversary saw signed. -/
+The adversary receives the public key and interacts with a signing
+oracle by issuing queries of type `S.Message n` and receiving
+responses of type `S.Signature n`. The adversary never controls the
+signing randomness — the game supplies it. After the interaction,
+the adversary outputs a forgery attempt `(message, signature)`.
+
+- `numQueries n` — an upper bound on the number of signing queries
+  at security parameter `n` (used as fuel for `OracleInteraction.run`)
+- `interact n pk` — the adaptive oracle interaction producing a
+  forgery attempt -/
 structure EUF_CMA_Adversary (S : SignatureScheme) where
-  /-- Queries: the messages the adversary asks the signing oracle
-  to sign (modeled as a finite list). -/
-  queries : (n : ℕ) → List (S.Message n)
-  /-- The forgery attempt: a message and signature. -/
-  forge : (n : ℕ) →
-    (S.Message n → S.Randomness n → S.Signature n) →
-    S.Message n × S.Signature n
+  /-- Upper bound on the number of signing queries -/
+  numQueries : ℕ → ℕ
+  /-- The adaptive oracle interaction: given a public key, query the
+  signing oracle and produce a forgery attempt `(message, signature)` -/
+  interact : (n : ℕ) → S.PublicKey n →
+    OracleInteraction (S.Message n) (S.Signature n)
+      (S.Message n × S.Signature n)
 
 /-- The **EUF-CMA security game** for a signature scheme.
 
-The advantage is `E_{(pk,sk),r}[1[A forges]]` where the adversary
-produces a valid signature on a message not in its query list. -/
+The game samples a key pair `(pk, sk)` and signing randomness
+`rs : Fin q → S.Randomness n` (one per query slot). The signing
+oracle is `fun i m => S.sign n sk m (rs i)` — the adversary never
+touches the randomness. The game runs the interaction, logs all
+queries, and checks:
+1. The forgery message was not among the queried messages
+2. The forged signature verifies under the public key
+
+The advantage is
+`E_{(pk,sk),rs}[1[interaction succeeds ∧ forgery valid ∧ fresh]]`. -/
 noncomputable def SignatureScheme.EUF_CMA_Game (S : SignatureScheme)
     [∀ n, DecidableEq (S.Message n)] :
     SecurityGame (EUF_CMA_Adversary S) where
   advantage A n :=
+    let q := A.numQueries n
     letI := S.publicKeyFintype n; letI := S.secretKeyFintype n
     letI := S.publicKeyNonempty n; letI := S.secretKeyNonempty n
     letI := S.randomnessFintype n; letI := S.randomnessNonempty n
-    Cslib.Probability.uniformExpect (S.PublicKey n × S.SecretKey n × S.Randomness n)
-      (fun ⟨pk, sk, _r⟩ =>
-        let signingOracle := S.sign n sk
-        let (m, σ) := A.forge n (fun msg r' => signingOracle msg r')
-        Cslib.Probability.boolToReal
-          (S.verify n pk m σ && !(A.queries n).contains m))
+    Cslib.Probability.uniformExpect
+      (S.PublicKey n × S.SecretKey n × (Fin q → S.Randomness n))
+      (fun ⟨pk, sk, rs⟩ =>
+        let oracle : Fin q → S.Message n → S.Signature n :=
+          fun i m => S.sign n sk m (rs i)
+        match (A.interact n pk).run q oracle with
+        | none => 0
+        | some (queries, m, σ) =>
+          Cslib.Probability.boolToReal
+            (S.verify n pk m σ && !(queries.contains m)))
 
 /-- A signature scheme is **EUF-CMA secure** if the EUF-CMA game
 is secure against all adversaries. -/

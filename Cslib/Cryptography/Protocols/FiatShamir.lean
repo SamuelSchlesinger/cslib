@@ -87,7 +87,6 @@ noncomputable def FiatShamirSignature
     let (t, z) := sig
     let c := H n m t
     P.verify n y t c z
-  efficient := True
 
 /-- The Fiat-Shamir signature scheme is **correct** when the key
 generation function maps witnesses to statements satisfying the

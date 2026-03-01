@@ -25,7 +25,7 @@ proofs, secure computation, and many other cryptographic protocols.
 
 ## Main Definitions
 
-* `CommitmentScheme` — a commitment scheme (Commit, Open) with efficiency constraint
+* `CommitmentScheme` — a commitment scheme (Commit, Open)
 * `CommitmentScheme.Hiding` — computational hiding property
 * `CommitmentScheme.Binding` — computational binding property
 
@@ -34,10 +34,6 @@ proofs, secure computation, and many other cryptographic protocols.
 We model commitment as a two-phase process: `commit` produces a
 commitment and an opening (decommitment), and `verify` checks that
 a claimed value matches the commitment.
-
-The `efficient` field records that commit and verify are poly-time
-computable. When the types carry `PolyTimeEncodable` instances, this
-should be witnessed by `IsPolyTimeFamily` on the operations.
 
 ## References
 
@@ -72,8 +68,6 @@ structure CommitmentScheme where
   /-- Verify an opening: check that the opening matches the
   commitment for the claimed message -/
   verify : (n : ℕ) → Commitment n → Message n → Opening n → Bool
-  /-- The commit and verify algorithms are efficiently (poly-time) computable. -/
-  efficient : Prop
 
 /-! ### Correctness -/
 
@@ -187,8 +181,6 @@ structure KeyedCommitmentScheme where
   commit : (n : ℕ) → CommitKey n → Message n → Commitment n × Opening n
   /-- Verify an opening -/
   verify : (n : ℕ) → CommitKey n → Commitment n → Message n → Opening n → Bool
-  /-- The algorithms are efficiently computable -/
-  efficient : Prop
 
 /-- A keyed commitment scheme is **correct** if verification always
 accepts honestly generated commitments. -/

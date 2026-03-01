@@ -18,7 +18,7 @@ their security notions.
 
 ## Main Definitions
 
-* `HashFamily` — a keyed hash function family with efficiency constraint
+* `HashFamily` — a keyed hash function family
 * `HashFamily.CollisionResistant` — collision resistance
 * `HashFamily.SecondPreimageResistant` — second preimage resistance
 
@@ -27,9 +27,6 @@ their security notions.
 We follow the standard keyed hash function model where a public key
 (hash function description) is sampled and given to the adversary.
 The adversary wins if it finds a collision.
-
-The `efficient` field records that the hash function is poly-time
-computable.
 
 ## References
 
@@ -56,8 +53,6 @@ structure HashFamily where
   keyNonempty : ∀ n, Nonempty (Key n)
   /-- The hash function -/
   hash : (n : ℕ) → Key n → Input n → Output n
-  /-- The hash function is efficiently (poly-time) computable. -/
-  efficient : Prop
 
 /-! ### Collision Resistance -/
 
