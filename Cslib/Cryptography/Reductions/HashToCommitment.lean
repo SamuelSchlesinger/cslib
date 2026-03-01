@@ -59,7 +59,6 @@ def HashFamily.toKeyedCommitmentScheme (H : HashFamily)
   commitKeyNonempty := H.keyNonempty
   commit n ck m := (H.hash n ck m, m)
   verify n ck c m _opening := decide (H.hash n ck m = c)
-  efficient := H.efficient
 
 /-- The hash-based keyed commitment scheme is correct. -/
 theorem HashFamily.toKeyedCommitmentScheme_correct (H : HashFamily)

@@ -38,10 +38,6 @@ Adversaries are modeled abstractly: an IND-CPA adversary produces two
 challenge messages and then guesses which was encrypted. The advantage
 is `|Pr[correct guess] - 1/2|`.
 
-The `efficient` field records that encrypt and decrypt are poly-time
-computable. When the types carry `PolyTimeEncodable` instances, this
-should be witnessed by `IsPolyTimeFamily` on the curried operations.
-
 ## References
 
 * [S. Goldwasser, S. Micali, *Probabilistic Encryption*][GoldwasserM1984]
@@ -78,8 +74,6 @@ structure EncryptionScheme where
   encrypt : (n : ℕ) → Key n → Plaintext n → Randomness n → Ciphertext n
   /-- Deterministic decryption -/
   decrypt : (n : ℕ) → Key n → Ciphertext n → Option (Plaintext n)
-  /-- The encrypt and decrypt algorithms are efficiently (poly-time) computable. -/
-  efficient : Prop
 
 /-- A **public-key encryption scheme** has separate public and secret
 keys. Key generation produces a pair; encryption uses the public key;
@@ -99,8 +93,6 @@ structure PKEncryptionScheme where
   encrypt : (n : ℕ) → PublicKey n → Plaintext n → Randomness n → Ciphertext n
   /-- Decrypt with the secret key -/
   decrypt : (n : ℕ) → SecretKey n → Ciphertext n → Option (Plaintext n)
-  /-- The encrypt and decrypt algorithms are efficiently (poly-time) computable. -/
-  efficient : Prop
 
 /-! ### Correctness -/
 

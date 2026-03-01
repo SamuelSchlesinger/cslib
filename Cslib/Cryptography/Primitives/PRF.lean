@@ -23,7 +23,7 @@ GGM construction builds a PRF from any pseudorandom generator.
 
 ## Main Definitions
 
-* `PRF` — a pseudorandom function family (with efficiency constraint)
+* `PRF` — a pseudorandom function family
 * `PRF.Secure` — information-theoretic security
 * `PRF.SecureAgainst` — computational security against efficient adversaries
 * `PRP` — a pseudorandom permutation (bijective PRF)
@@ -33,10 +33,6 @@ GGM construction builds a PRF from any pseudorandom generator.
 We model PRFs as keyed function families `f : Key n → Input n → Output n`.
 Security says that no efficient oracle adversary can distinguish
 `f(k, ·)` (for random `k`) from a truly random function.
-
-The `efficient` field records that the eval function is poly-time
-computable. When the types carry `PolyTimeEncodable` instances, this
-should be witnessed by `IsPolyTimeFamily` applied to the curried eval.
 
 ## References
 
@@ -66,8 +62,6 @@ structure PRF where
   funNonempty : ∀ n, Nonempty (Input n → Output n)
   /-- The keyed function -/
   eval : (n : ℕ) → Key n → Input n → Output n
-  /-- The eval function is efficiently (poly-time) computable. -/
-  efficient : Prop
 
 /-- A **PRF adversary** has oracle access to either the PRF (keyed with
 a random key) or a truly random function, and must distinguish between

@@ -6,6 +6,7 @@ Authors: Samuel Schlesinger
 
 module
 
+public import Cslib.Cryptography.Foundations.OracleInteraction
 public import Cslib.Cryptography.Foundations.SecurityGame
 
 @[expose] public section
@@ -20,18 +21,16 @@ a new message.
 
 ## Main Definitions
 
-* `MACScheme` — a MAC scheme (Tag, Verify) with efficiency constraint
+* `MACScheme` — a MAC scheme (Tag, Verify)
 * `MACScheme.EUF_CMA_Adversary` — existential unforgeability adversary
-  (single-query variant)
 * `MACScheme.EUF_CMA_Game` — the EUF-CMA security game
 * `MACScheme.EUF_CMA_Secure` — security predicate
 
 ## Design Notes
 
-We use a single-query adversary model for simplicity: the adversary
-queries the tagging oracle on one chosen message and then must forge
-a valid tag on a *different* message. This suffices for the PRF → MAC
-reduction and can be extended to multi-query later.
+The adversary adaptively queries a tagging oracle via
+`OracleInteraction` and must forge a valid tag on a message it
+never queried. The game logs all queries and checks freshness.
 
 The EUF-CMA game is a **search game** (baseline 0, not 1/2).
 
@@ -64,8 +63,6 @@ structure MACScheme where
   tag : (n : ℕ) → Key n → Message n → Tag n
   /-- The verification function -/
   verify : (n : ℕ) → Key n → Message n → Tag n → Bool
-  /-- The tag and verify algorithms are efficiently (poly-time) computable. -/
-  efficient : Prop
 
 /-! ### Correctness -/
 
@@ -77,36 +74,53 @@ def MACScheme.Correct (M : MACScheme) : Prop :=
 
 /-! ### EUF-CMA Security -/
 
-/-- An **EUF-CMA adversary** for a MAC scheme (single-query variant).
+/-- An **EUF-CMA adversary** for a MAC scheme models adaptive
+chosen-message attack via `OracleInteraction`.
 
-The adversary operates in two phases:
-1. `query` — choose a message to query the tagging oracle on
-2. `forge` — given the tag on the queried message, produce a forgery
-   `(m*, t*)` where `m*` must differ from the queried message -/
+The adversary interacts with a tagging oracle by issuing queries of
+type `M.Message n` and receiving responses of type `M.Tag n`. After
+the interaction, the adversary outputs a forgery attempt
+`(message, tag)`. The game logs all queries and checks freshness —
+the adversary never self-reports which messages it queried.
+
+- `numQueries n` — an upper bound on the number of tagging queries
+  at security parameter `n` (used as fuel for `OracleInteraction.run`)
+- `interact n` — the adaptive oracle interaction producing a forgery
+  attempt -/
 structure MACScheme.EUF_CMA_Adversary (M : MACScheme) where
-  /-- Phase 1: choose a message to query -/
-  query : (n : ℕ) → M.Message n
-  /-- Phase 2: given the tag on `query`, produce a forgery attempt -/
-  forge : (n : ℕ) → M.Tag n → M.Message n × M.Tag n
+  /-- Upper bound on the number of tagging queries -/
+  numQueries : ℕ → ℕ
+  /-- The adaptive oracle interaction: query the tagging oracle and
+  produce a forgery attempt `(message, tag)` -/
+  interact : (n : ℕ) →
+    OracleInteraction (M.Message n) (M.Tag n)
+      (M.Message n × M.Tag n)
 
 /-- The **EUF-CMA security game** for a MAC scheme.
 
-The advantage is `E_k[1[A forges]]`, where the adversary must produce
-a valid tag on a message different from its single oracle query.
+The game samples a key `k` and runs the adversary's oracle
+interaction with oracle `fun _i m => M.tag n k m` (MACs are
+deterministic, so the query index is unused). The game logs all
+queries and checks:
+1. The forgery message was not among the queried messages
+2. The forged tag verifies under the key
 
+The advantage is `E_k[1[interaction succeeds ∧ forgery valid ∧ fresh]]`.
 This is a **search game** with baseline 0. -/
 noncomputable def MACScheme.EUF_CMA_Game (M : MACScheme)
     [∀ n, DecidableEq (M.Message n)] :
     SecurityGame (MACScheme.EUF_CMA_Adversary M) where
   advantage A n :=
+    let q := A.numQueries n
     letI := M.keyFintype n; letI := M.keyNonempty n
     Cslib.Probability.uniformExpect (M.Key n) (fun k =>
-      let m_query := A.query n
-      let t_query := M.tag n k m_query
-      let (m_forge, t_forge) := A.forge n t_query
-      Cslib.Probability.boolToReal
-        (decide (m_forge ≠ m_query) &&
-         M.verify n k m_forge t_forge))
+      let oracle : Fin q → M.Message n → M.Tag n :=
+        fun _i m => M.tag n k m
+      match (A.interact n).run q oracle with
+      | none => 0
+      | some (queries, m_forge, t_forge) =>
+        Cslib.Probability.boolToReal
+          (M.verify n k m_forge t_forge && !(queries.contains m_forge)))
 
 /-- A MAC scheme is **EUF-CMA secure** if the EUF-CMA game is secure
 against all adversaries. -/

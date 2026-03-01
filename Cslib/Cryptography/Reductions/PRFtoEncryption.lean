@@ -59,7 +59,6 @@ noncomputable def PRF.toEncryptionScheme (F : PRF)
   randomnessNonempty := inferInstance
   encrypt n k m r := (r, F.eval n k r + m)
   decrypt n k ct := some (ct.2 - F.eval n k ct.1)
-  efficient := F.efficient
 
 /-- `toEncryptionScheme.Ciphertext n` is `F.Input n × F.Output n`. -/
 @[simp] theorem PRF.toEncryptionScheme_Ciphertext (F : PRF)

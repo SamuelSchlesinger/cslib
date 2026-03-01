@@ -216,7 +216,6 @@ noncomputable def SchnorrSignature (C : CyclicGroupFamily)
     let (u_t, α_z) := sig
     let c := H n m u_t
     decide (C.gpow n α_z = u_t * pk ^ (ZMod.val c))
-  efficient := True
 
 /-- The Schnorr signature scheme is **correct**: honestly generated
 signatures always verify.
