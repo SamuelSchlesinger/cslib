@@ -80,6 +80,31 @@ noncomputable def forkProb
         | some (j', _) =>
           boolToReal (decide (j = j' ∧ h₁ j ≠ h_fork j)))
 
+/-- `forkAcceptProb` is nonneg: it's the expected value of a {0,1}-valued function. -/
+theorem forkAcceptProb_nonneg
+    {α : Type} (Coins R : Type) [Fintype Coins] [Nonempty Coins]
+    [Fintype R] [Nonempty R] (q : ℕ)
+    (run : Coins → (Fin q → R) → Option (Fin q × α)) :
+    0 ≤ forkAcceptProb Coins R q run := by
+  apply uniformExpect_nonneg
+  intro ⟨c, h⟩; dsimp only []
+  split <;> norm_num
+
+/-- `forkAcceptProb` is at most 1: it's the expected value of a function bounded by 1. -/
+theorem forkAcceptProb_le_one
+    {α : Type} (Coins R : Type) [Fintype Coins] [Nonempty Coins]
+    [Fintype R] [Nonempty R] (q : ℕ)
+    (run : Coins → (Fin q → R) → Option (Fin q × α)) :
+    forkAcceptProb Coins R q run ≤ 1 := by
+  unfold forkAcceptProb
+  calc uniformExpect (Coins × (Fin q → R)) (fun ⟨c, h⟩ =>
+        match run c h with | none => 0 | some _ => 1)
+      ≤ uniformExpect (Coins × (Fin q → R)) (fun _ => (1 : ℝ)) := by
+        apply uniformExpect_mono
+        intro ⟨c, h⟩; dsimp only []
+        split <;> norm_num
+    _ = 1 := uniformExpect_const _ 1
+
 /-- Acceptance probability for fixed coins `c`, averaged over oracle tables. -/
 private noncomputable def perCoinsAcc
     {α : Type} {R : Type} [Fintype R] [Nonempty R] {q : ℕ}
@@ -158,13 +183,13 @@ private theorem perCoinsFork_eq_sum
     -- Collapse the sum using sum_eq_single: only the x = j term is nonzero
     rw [Finset.sum_eq_single j]
     · -- Main: show the j-th term equals the LHS
-      simp only [show j = j from rfl, ite_true, one_mul]
+      simp only [ite_true, one_mul]
       -- Case split on the second run
       rcases run c (fun i => if i.val < j.val then h₁ i else h₂ i) with _ | ⟨j', b⟩
-      · simp [boolToReal]
+      · simp
       · by_cases h_jj' : j = j'
         · subst h_jj'
-          simp only [decide_true, true_and, ite_true]
+          simp only [true_and, ite_true]
           by_cases h_eq : h₁ j = h₂ j
           · simp [boolToReal, h_eq]
           · simp [boolToReal, h_eq]
