@@ -335,7 +335,7 @@ private theorem correlation_bound
   -- Step C: E[β] = perIndexAcc
   have beta_eq : uniformExpect (P → R) β = perIndexAcc run c j := by
     -- β(p) = E_s[ind(e.symm(p,s))], so E_p[β(p)] = E_{(p,s)}[ind(e.symm(p,s))]
-    show uniformExpect (P → R) (fun p =>
+    change uniformExpect (P → R) (fun p =>
       uniformExpect (S → R) (fun s => ind (e.symm (p, s)))) = _
     -- Rewrite inner as composition to help Fubini match
     rw [show (fun p : P → R => uniformExpect (S → R) (fun s => ind (e.symm (p, s)))) =
@@ -387,7 +387,7 @@ private theorem perIndexFork_ge
           with _ | ⟨j₂, a₂⟩
         · simp; split <;> simp
         · by_cases hj₂ : j₂ = j₁
-          · subst hj₂; simp [hrun₂]; split <;> simp
+          · subst hj₂; simp; split <;> simp
           · simp [hj₂]; split <;> simp
       · -- j₁ ≠ j: acc₁ = 0
         simp [hrun₁, hj₁]
