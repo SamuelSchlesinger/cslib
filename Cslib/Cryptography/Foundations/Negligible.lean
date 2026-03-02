@@ -222,6 +222,19 @@ For any target exponent `c`, use `2c` for `f`'s negligibility:
 theorem Negligible.sqrt_nonneg {f : ℕ → ℝ} (hf : Negligible f)
     (hnn : ∀ n, 0 ≤ f n) :
     Negligible (fun n => Real.sqrt (f n)) := by
-  sorry
+  intro c hc
+  obtain ⟨N, hN⟩ := hf (2 * c) (by omega)
+  refine ⟨max N 1, fun n hn => ?_⟩
+  have hn_pos : (0 : ℝ) < (n : ℝ) := by exact_mod_cast (show 0 < n by omega)
+  have hfn := hN n (by omega)
+  rw [abs_of_nonneg (hnn n)] at hfn
+  rw [abs_of_nonneg (Real.sqrt_nonneg _)]
+  calc Real.sqrt (f n)
+      < Real.sqrt (1 / (n : ℝ) ^ (2 * c)) :=
+        Real.sqrt_lt_sqrt (hnn n) hfn
+    _ = 1 / (n : ℝ) ^ c := by
+        rw [show (n : ℝ) ^ (2 * c) = ((n : ℝ) ^ c) ^ 2 from by ring,
+          Real.sqrt_div (le_of_lt one_pos),
+          Real.sqrt_one, Real.sqrt_sq (le_of_lt (pow_pos hn_pos c))]
 
 end
