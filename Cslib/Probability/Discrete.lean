@@ -241,6 +241,64 @@ theorem uniformExpect_prod5_ignore_ae {A B C D E : Type*}
   simp_rw [← Finset.mul_sum]
   -- Unlike `ignore_bd`, `field_simp` already leaves the goal in normal form here
 
+/-- Monotonicity of `uniformExpect`: if `f ≤ g` pointwise then `E[f] ≤ E[g]`. -/
+theorem uniformExpect_mono (α : Type*) [Fintype α] [Nonempty α]
+    {f g : α → ℝ} (hle : ∀ a, f a ≤ g a) :
+    uniformExpect α f ≤ uniformExpect α g := by
+  unfold uniformExpect
+  exact Finset.sum_le_sum fun a _ =>
+    mul_le_mul_of_nonneg_left (hle a) ENNReal.toReal_nonneg
+
+/-- Jensen's inequality for squares: `E[f]² ≤ E[f²]`.
+
+Follows from the variance identity: `E[(f - μ)²] ≥ 0` implies
+`E[f²] - μ² ≥ 0` where `μ = E[f]`. -/
+theorem uniformExpect_sq_le (α : Type*) [Fintype α] [Nonempty α]
+    (f : α → ℝ) :
+    (uniformExpect α f) ^ 2 ≤ uniformExpect α (fun a => f a ^ 2) := by
+  set μ := uniformExpect α f
+  suffices h : 0 ≤ uniformExpect α (fun a => f a ^ 2) - μ ^ 2 by linarith
+  have key : uniformExpect α (fun a => (f a - μ) ^ 2) =
+      uniformExpect α (fun a => f a ^ 2) - μ ^ 2 := by
+    trans uniformExpect α (fun a => f a ^ 2 + (-2 * μ * f a + μ ^ 2))
+    · congr 1; ext a; ring
+    rw [uniformExpect_add, uniformExpect_add, uniformExpect_smul, uniformExpect_const]
+    ring
+  linarith [uniformExpect_nonneg α (fun a => sq_nonneg (f a - μ))]
+
+/-- Transport `uniformExpect` along a type equivalence `α ≃ β`:
+`E[f ∘ e] over α = E[f] over β`. -/
+theorem uniformExpect_congr {α β : Type*} [Fintype α] [Nonempty α]
+    [Fintype β] [Nonempty β] (e : α ≃ β) (f : β → ℝ) :
+    uniformExpect α (f ∘ e) = uniformExpect β f := by
+  simp only [uniformExpect_eq, Fintype.card_congr e]
+  congr 1
+  exact Finset.sum_equiv e (by simp) (by simp)
+
+/-- Pull a finite sum out of `uniformExpect`:
+`E[∑ j, f j a] = ∑ j, E[f j a]`. -/
+theorem uniformExpect_finsum {α : Type*} [Fintype α] [Nonempty α]
+    {n : ℕ} (f : Fin n → α → ℝ) :
+    uniformExpect α (fun a => ∑ j : Fin n, f j a) =
+      ∑ j : Fin n, uniformExpect α (f j) := by
+  simp only [uniformExpect_eq, Finset.mul_sum]
+  rw [Finset.sum_comm]
+
+/-- Independence of factors in product expectations:
+`E_{(a,b)}[f(a) * g(b)] = E[f] * E[g]`. -/
+theorem uniformExpect_prod_mul {α β : Type*} [Fintype α] [Nonempty α]
+    [Fintype β] [Nonempty β] (f : α → ℝ) (g : β → ℝ) :
+    uniformExpect (α × β) (fun p => f p.1 * g p.2) =
+      uniformExpect α f * uniformExpect β g := by
+  rw [uniformExpect_prod]
+  have : ∀ a : α, uniformExpect β (fun b => f a * g b) =
+      f a * uniformExpect β g :=
+    fun a => uniformExpect_smul β (f a) g
+  simp_rw [this]
+  rw [show (fun a => f a * uniformExpect β g) =
+      (fun a => uniformExpect β g * f a) from by ext; ring,
+    uniformExpect_smul]; ring
+
 end Cslib.Probability
 
 end
