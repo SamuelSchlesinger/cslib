@@ -205,6 +205,31 @@ theorem Negligible.mul_polyBounded {f g : ℕ → ℝ}
         rw [pow_add, one_div, mul_inv, mul_assoc,
           inv_mul_cancel₀ hnd, mul_one, ← one_div]
 
+/-- The product of two polynomially bounded functions is polynomially bounded.
+
+If `|f(n)| ≤ p(n)` and `|g(n)| ≤ q(n)` for natural-number polynomials `p, q`,
+then `|f(n) · g(n)| ≤ (p · q)(n)`. -/
+theorem PolynomiallyBounded.mul {f g : ℕ → ℝ}
+    (hf : PolynomiallyBounded f) (hg : PolynomiallyBounded g) :
+    PolynomiallyBounded (fun n => f n * g n) := by
+  obtain ⟨p, hp⟩ := hf
+  obtain ⟨q, hq⟩ := hg
+  refine ⟨p * q, fun n => ?_⟩
+  calc |f n * g n|
+      = |f n| * |g n| := abs_mul _ _
+    _ ≤ ↑(p.eval n) * ↑(q.eval n) :=
+        mul_le_mul (hp n) (hq n) (abs_nonneg _) (by exact_mod_cast Nat.zero_le _)
+    _ = ↑((p * q).eval n) := by rw [Polynomial.eval_mul, Nat.cast_mul]
+
+/-- The square of a polynomially bounded function is polynomially bounded. -/
+theorem PolynomiallyBounded.sq {f : ℕ → ℝ}
+    (hf : PolynomiallyBounded f) :
+    PolynomiallyBounded (fun n => f n ^ 2) := by
+  have : (fun n => f n ^ 2) = (fun n => f n * f n) :=
+    funext fun n => _root_.sq (f n)
+  rw [this]
+  exact hf.mul hf
+
 /-- A noticeable function is non-negligible. -/
 theorem Noticeable.nonNegligible {f : ℕ → ℝ} (hf : Noticeable f) :
     NonNegligible f := by

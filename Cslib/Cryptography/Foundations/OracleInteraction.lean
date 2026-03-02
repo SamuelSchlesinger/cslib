@@ -75,4 +75,250 @@ def OracleInteraction.run {Q R A : Type}
     | none => none
     | some (qs, a) => some (q :: qs, a)
 
+/-- The query log produced by `run` has length at most `fuel`. -/
+theorem OracleInteraction.run_length_le {Q R A : Type}
+    (interaction : OracleInteraction Q R A)
+    (fuel : Nat) (oracle : Fin fuel → Q → R)
+    {queries : List Q} {a : A}
+    (h : interaction.run fuel oracle = some (queries, a)) :
+    queries.length ≤ fuel := by
+  induction fuel generalizing interaction queries a with
+  | zero =>
+    cases interaction with
+    | done _ =>
+      change some ([], _) = some (queries, a) at h
+      obtain ⟨rfl, -⟩ := Prod.mk.inj (Option.some.inj h)
+      exact Nat.le.refl
+    | query _ _ =>
+      change (none : Option _) = some (queries, a) at h
+      exact absurd h nofun
+  | succ n ih =>
+    cases interaction with
+    | done _ =>
+      change some ([], _) = some (queries, a) at h
+      obtain ⟨rfl, -⟩ := Prod.mk.inj (Option.some.inj h)
+      exact Nat.zero_le _
+    | query q k =>
+      have h_red : OracleInteraction.run (.query q k) (n + 1) oracle =
+          match (k (oracle ⟨0, Nat.zero_lt_succ n⟩ q)).run n
+            (fun i : Fin n => oracle ⟨i.val + 1, Nat.succ_lt_succ i.isLt⟩) with
+          | none => none
+          | some (qs, a') => some (q :: qs, a') := rfl
+      rw [h_red] at h
+      rcases h_rec : (k (oracle ⟨0, Nat.zero_lt_succ n⟩ q)).run n
+        (fun i : Fin n => oracle ⟨i.val + 1, Nat.succ_lt_succ i.isLt⟩)
+        with _ | ⟨qs, a'⟩
+      · rw [h_rec] at h; exact absurd h nofun
+      · rw [h_rec] at h
+        obtain ⟨rfl, -⟩ := Prod.mk.inj (Option.some.inj h)
+        exact Nat.succ_le_succ (ih _ _ h_rec)
+
+/-- **Deterministic prefix**: if two oracles agree on the first `k`
+indices, both runs complete, and both query logs have an entry at
+position `k`, then the `k`-th query is the same.
+
+This captures the fact that adaptive oracle interactions are
+deterministic given the oracle responses: if two oracles agree
+on the first `k` steps, the interaction reaches the same state
+at step `k`, and hence issues the same query. -/
+theorem OracleInteraction.run_prefix_query_eq {Q R A : Type}
+    (interaction : OracleInteraction Q R A)
+    (fuel : Nat) (oracle₁ oracle₂ : Fin fuel → Q → R)
+    (k : Nat)
+    (h_agree : ∀ (i : Fin fuel), i.val < k → oracle₁ i = oracle₂ i)
+    {queries₁ queries₂ : List Q} {a₁ a₂ : A}
+    (h₁ : interaction.run fuel oracle₁ = some (queries₁, a₁))
+    (h₂ : interaction.run fuel oracle₂ = some (queries₂, a₂))
+    (hk₁ : k < queries₁.length) (hk₂ : k < queries₂.length) :
+    queries₁[k] = queries₂[k] := by
+  induction fuel generalizing interaction k queries₁ queries₂ a₁ a₂ with
+  | zero =>
+    cases interaction with
+    | done _ =>
+      change some ([], _) = _ at h₁
+      obtain ⟨rfl, -⟩ := Prod.mk.inj (Option.some.inj h₁)
+      exact absurd hk₁ (by simp)
+    | query _ _ =>
+      exact absurd (show (none : Option _) = _ from h₁) nofun
+  | succ n ih =>
+    cases interaction with
+    | done _ =>
+      change some ([], _) = _ at h₁
+      obtain ⟨rfl, -⟩ := Prod.mk.inj (Option.some.inj h₁)
+      exact absurd hk₁ (by simp)
+    | query q cont =>
+      -- Reduce run in both hypotheses
+      have red₁ : OracleInteraction.run (.query q cont) (n + 1) oracle₁ =
+          match (cont (oracle₁ ⟨0, Nat.zero_lt_succ n⟩ q)).run n
+            (fun i : Fin n => oracle₁ ⟨i.val + 1, Nat.succ_lt_succ i.isLt⟩) with
+          | none => none | some (qs, a') => some (q :: qs, a') := rfl
+      have red₂ : OracleInteraction.run (.query q cont) (n + 1) oracle₂ =
+          match (cont (oracle₂ ⟨0, Nat.zero_lt_succ n⟩ q)).run n
+            (fun i : Fin n => oracle₂ ⟨i.val + 1, Nat.succ_lt_succ i.isLt⟩) with
+          | none => none | some (qs, a') => some (q :: qs, a') := rfl
+      rw [red₁] at h₁; rw [red₂] at h₂
+      -- Extract recursive results
+      rcases h_rec₁ : (cont (oracle₁ ⟨0, Nat.zero_lt_succ n⟩ q)).run n
+        (fun i : Fin n => oracle₁ ⟨i.val + 1, Nat.succ_lt_succ i.isLt⟩)
+        with _ | ⟨qs₁, a₁'⟩
+      · rw [h_rec₁] at h₁; exact absurd h₁ nofun
+      · rw [h_rec₁] at h₁
+        obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj h₁)
+        rcases h_rec₂ : (cont (oracle₂ ⟨0, Nat.zero_lt_succ n⟩ q)).run n
+          (fun i : Fin n => oracle₂ ⟨i.val + 1, Nat.succ_lt_succ i.isLt⟩)
+          with _ | ⟨qs₂, a₂'⟩
+        · rw [h_rec₂] at h₂; exact absurd h₂ nofun
+        · rw [h_rec₂] at h₂
+          obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj h₂)
+          -- queries₁ = q :: qs₁, queries₂ = q :: qs₂
+          cases k with
+          | zero => rfl
+          | succ k' =>
+            simp only [List.length_cons, Nat.succ_lt_succ_iff] at hk₁ hk₂
+            show qs₁[k'] = qs₂[k']
+            -- Oracle responses at step 0 agree (0 < k'+1)
+            have h_r : oracle₁ ⟨0, Nat.zero_lt_succ n⟩ q =
+                oracle₂ ⟨0, Nat.zero_lt_succ n⟩ q :=
+              congrFun (h_agree ⟨0, Nat.zero_lt_succ n⟩ (Nat.zero_lt_succ k')) q
+            -- So the continuations are the same
+            rw [h_r] at h_rec₁
+            exact ih (cont (oracle₂ ⟨0, Nat.zero_lt_succ n⟩ q))
+              (fun i : Fin n => oracle₁ ⟨i.val + 1, Nat.succ_lt_succ i.isLt⟩)
+              (fun i : Fin n => oracle₂ ⟨i.val + 1, Nat.succ_lt_succ i.isLt⟩)
+              k'
+              (fun i hi => h_agree ⟨i.val + 1, Nat.succ_lt_succ i.isLt⟩
+                (Nat.succ_lt_succ hi))
+              h_rec₁ h_rec₂ hk₁ hk₂
+
+/-- **Prefix length preservation**: if two oracles agree on the first
+`k` indices, both runs complete, and the first run has `k < queries₁.length`,
+then the second run also has `k < queries₂.length`.
+
+This captures the fact that the interaction's decision to continue or
+terminate at step `k` depends only on oracle responses at steps `< k`. -/
+theorem OracleInteraction.run_prefix_implies_length {Q R A : Type}
+    (interaction : OracleInteraction Q R A)
+    (fuel : Nat) (oracle₁ oracle₂ : Fin fuel → Q → R)
+    (k : Nat)
+    (h_agree : ∀ (i : Fin fuel), i.val < k → oracle₁ i = oracle₂ i)
+    {queries₁ queries₂ : List Q} {a₁ a₂ : A}
+    (h₁ : interaction.run fuel oracle₁ = some (queries₁, a₁))
+    (h₂ : interaction.run fuel oracle₂ = some (queries₂, a₂))
+    (hk₁ : k < queries₁.length) :
+    k < queries₂.length := by
+  induction fuel generalizing interaction k queries₁ queries₂ a₁ a₂ with
+  | zero =>
+    cases interaction with
+    | done _ =>
+      change some ([], _) = _ at h₁
+      obtain ⟨rfl, -⟩ := Prod.mk.inj (Option.some.inj h₁)
+      exact absurd hk₁ (by simp)
+    | query _ _ =>
+      exact absurd (show (none : Option _) = _ from h₁) nofun
+  | succ n ih =>
+    cases interaction with
+    | done _ =>
+      change some ([], _) = _ at h₁
+      obtain ⟨rfl, -⟩ := Prod.mk.inj (Option.some.inj h₁)
+      exact absurd hk₁ (by simp)
+    | query q cont =>
+      have red₁ : OracleInteraction.run (.query q cont) (n + 1) oracle₁ =
+          match (cont (oracle₁ ⟨0, Nat.zero_lt_succ n⟩ q)).run n
+            (fun i : Fin n => oracle₁ ⟨i.val + 1, Nat.succ_lt_succ i.isLt⟩) with
+          | none => none | some (qs, a') => some (q :: qs, a') := rfl
+      have red₂ : OracleInteraction.run (.query q cont) (n + 1) oracle₂ =
+          match (cont (oracle₂ ⟨0, Nat.zero_lt_succ n⟩ q)).run n
+            (fun i : Fin n => oracle₂ ⟨i.val + 1, Nat.succ_lt_succ i.isLt⟩) with
+          | none => none | some (qs, a') => some (q :: qs, a') := rfl
+      rw [red₁] at h₁; rw [red₂] at h₂
+      rcases h_rec₁ : (cont (oracle₁ ⟨0, Nat.zero_lt_succ n⟩ q)).run n
+        (fun i : Fin n => oracle₁ ⟨i.val + 1, Nat.succ_lt_succ i.isLt⟩)
+        with _ | ⟨qs₁, a₁'⟩
+      · rw [h_rec₁] at h₁; exact absurd h₁ nofun
+      · rw [h_rec₁] at h₁
+        obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj h₁)
+        rcases h_rec₂ : (cont (oracle₂ ⟨0, Nat.zero_lt_succ n⟩ q)).run n
+          (fun i : Fin n => oracle₂ ⟨i.val + 1, Nat.succ_lt_succ i.isLt⟩)
+          with _ | ⟨qs₂, a₂'⟩
+        · rw [h_rec₂] at h₂; exact absurd h₂ nofun
+        · rw [h_rec₂] at h₂
+          obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj h₂)
+          cases k with
+          | zero => simp [List.length_cons]
+          | succ k' =>
+            simp only [List.length_cons, Nat.succ_lt_succ_iff] at hk₁ ⊢
+            have h_r : oracle₁ ⟨0, Nat.zero_lt_succ n⟩ q =
+                oracle₂ ⟨0, Nat.zero_lt_succ n⟩ q :=
+              congrFun (h_agree ⟨0, Nat.zero_lt_succ n⟩ (Nat.zero_lt_succ k')) q
+            rw [h_r] at h_rec₁
+            exact ih (cont (oracle₂ ⟨0, Nat.zero_lt_succ n⟩ q))
+              (fun i : Fin n => oracle₁ ⟨i.val + 1, Nat.succ_lt_succ i.isLt⟩)
+              (fun i : Fin n => oracle₂ ⟨i.val + 1, Nat.succ_lt_succ i.isLt⟩)
+              k'
+              (fun i hi => h_agree ⟨i.val + 1, Nat.succ_lt_succ i.isLt⟩
+                (Nat.succ_lt_succ hi))
+              h_rec₁ h_rec₂ hk₁
+
+/-- **Deterministic prefix (full)**: if two oracles agree on all indices
+`< queries.length`, and the first run succeeds producing `(queries, a)`,
+then the second run produces the same `(queries, a)`.
+
+This strengthens `run_prefix_query_eq` from agreement at a single position
+to identical outputs: if the oracles agree on all steps the interaction
+actually used, the interaction is fully deterministic. -/
+theorem OracleInteraction.run_det_prefix {Q R A : Type}
+    (interaction : OracleInteraction Q R A)
+    (fuel : Nat) (oracle₁ oracle₂ : Fin fuel → Q → R)
+    {queries : List Q} {a : A}
+    (h₁ : interaction.run fuel oracle₁ = some (queries, a))
+    (h_agree : ∀ (i : Fin fuel), i.val < queries.length →
+               oracle₁ i = oracle₂ i) :
+    interaction.run fuel oracle₂ = some (queries, a) := by
+  induction fuel generalizing interaction queries a with
+  | zero =>
+    cases interaction with
+    | done a' =>
+      change some ([], a') = some (queries, a) at h₁
+      obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj h₁)
+      rfl
+    | query _ _ =>
+      exact absurd (show (none : Option _) = _ from h₁) nofun
+  | succ n ih =>
+    cases interaction with
+    | done a' =>
+      change some ([], a') = some (queries, a) at h₁
+      obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj h₁)
+      rfl
+    | query q k =>
+      have red₁ : OracleInteraction.run (.query q k) (n + 1) oracle₁ =
+          match (k (oracle₁ ⟨0, Nat.zero_lt_succ n⟩ q)).run n
+            (fun i : Fin n => oracle₁ ⟨i.val + 1, Nat.succ_lt_succ i.isLt⟩) with
+          | none => none | some (qs, a') => some (q :: qs, a') := rfl
+      rw [red₁] at h₁
+      rcases h_rec : (k (oracle₁ ⟨0, Nat.zero_lt_succ n⟩ q)).run n
+        (fun i : Fin n => oracle₁ ⟨i.val + 1, Nat.succ_lt_succ i.isLt⟩)
+        with _ | ⟨qs, a'⟩
+      · rw [h_rec] at h₁; exact absurd h₁ nofun
+      · rw [h_rec] at h₁
+        obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj h₁)
+        -- queries = q :: qs, so queries.length = qs.length + 1
+        -- Oracle responses at step 0 agree (0 < (q :: qs).length)
+        have h_r : oracle₁ ⟨0, Nat.zero_lt_succ n⟩ q =
+            oracle₂ ⟨0, Nat.zero_lt_succ n⟩ q :=
+          congrFun (h_agree ⟨0, Nat.zero_lt_succ n⟩
+            (by simp [List.length_cons])) q
+        -- Apply IH with shifted oracles
+        have h_ih := ih (k (oracle₁ ⟨0, Nat.zero_lt_succ n⟩ q))
+          (fun i : Fin n => oracle₁ ⟨i.val + 1, Nat.succ_lt_succ i.isLt⟩)
+          (fun i : Fin n => oracle₂ ⟨i.val + 1, Nat.succ_lt_succ i.isLt⟩)
+          h_rec
+          (fun i hi => h_agree ⟨i.val + 1, Nat.succ_lt_succ i.isLt⟩
+            (by simp [List.length_cons]; omega))
+        -- Now show run oracle₂ = some (q :: qs, a)
+        have red₂ : OracleInteraction.run (.query q k) (n + 1) oracle₂ =
+            match (k (oracle₂ ⟨0, Nat.zero_lt_succ n⟩ q)).run n
+              (fun i : Fin n => oracle₂ ⟨i.val + 1, Nat.succ_lt_succ i.isLt⟩) with
+            | none => none | some (qs, a') => some (q :: qs, a') := rfl
+        rw [red₂, ← h_r, h_ih]
+
 end

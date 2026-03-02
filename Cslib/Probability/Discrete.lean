@@ -299,6 +299,32 @@ theorem uniformExpect_prod_mul {α β : Type*} [Fintype α] [Nonempty α]
       (fun a => uniformExpect β g * f a) from by ext; ring,
     uniformExpect_smul]; ring
 
+/-- If `acc²/q ≤ ε + acc/C` (with `0 ≤ acc ≤ 1`, `q > 0`, `C > 0`)
+then `acc ≤ √(q * ε + q / C)`.
+
+This is the algebraic step that inverts the forking lemma bound. -/
+theorem quadratic_sqrt_bound {acc q ε C : ℝ}
+    (h_nn : 0 ≤ acc) (h_le1 : acc ≤ 1) (hq : 0 < q) (hC : 0 < C)
+    (h : acc ^ 2 / q ≤ ε + acc / C) :
+    acc ≤ Real.sqrt (q * ε + q / C) := by
+  -- From h: acc² ≤ q * ε + q * acc / C
+  have h1 : acc ^ 2 ≤ q * ε + q * (acc / C) := by
+    have h_mul := mul_le_mul_of_nonneg_right h (le_of_lt hq)
+    have h_cancel : acc ^ 2 / q * q = acc ^ 2 := div_mul_cancel₀ _ (ne_of_gt hq)
+    linarith [show (ε + acc / C) * q = q * ε + q * (acc / C) from by ring]
+  -- From acc ≤ 1: q * acc / C ≤ q / C
+  have h2 : q * (acc / C) ≤ q / C := by
+    have h_le : acc / C ≤ 1 / C := div_le_div_of_nonneg_right h_le1 (le_of_lt hC)
+    have h_mul : q * (acc / C) ≤ q * (1 / C) := mul_le_mul_of_nonneg_left h_le (le_of_lt hq)
+    linarith [show q * (1 / C) = q / C from by ring]
+  -- So acc² ≤ q * ε + q / C
+  have h3 : acc ^ 2 ≤ q * ε + q / C := by linarith
+  -- acc = √(acc²) ≤ √(q * ε + q / C) by monotonicity of sqrt
+  calc acc = Real.sqrt (acc ^ 2) := by
+        rw [Real.sqrt_sq h_nn]
+    _ ≤ Real.sqrt (q * ε + q / C) := by
+        exact Real.sqrt_le_sqrt h3
+
 end Cslib.Probability
 
 end
