@@ -15,3 +15,7 @@
 /docs/Std-manifest.json.trace
 .DS_Store
 .claude
+.sorry-killer
+sorry-killer.sh
+formalization_summary.tex
+formalization_summary.pdf
