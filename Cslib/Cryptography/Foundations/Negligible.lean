@@ -215,4 +215,13 @@ theorem Noticeable.nonNegligible {f : ℕ → ℝ} (hf : Noticeable f) :
   have := hN' (max N N') (le_max_right _ _)
   linarith
 
+/-- If `f` is negligible and nonneg, then `fun n => Real.sqrt (f n)` is negligible.
+
+For any target exponent `c`, use `2c` for `f`'s negligibility:
+`f n < 1/n^{2c}` implies `√(f n) < 1/n^c`. -/
+theorem Negligible.sqrt_nonneg {f : ℕ → ℝ} (hf : Negligible f)
+    (hnn : ∀ n, 0 ≤ f n) :
+    Negligible (fun n => Real.sqrt (f n)) := by
+  sorry
+
 end

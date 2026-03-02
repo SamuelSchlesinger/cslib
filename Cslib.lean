@@ -53,6 +53,7 @@ public import Cslib.Cryptography.Foundations.Indistinguishability
 public import Cslib.Cryptography.Foundations.Negligible
 public import Cslib.Cryptography.Foundations.OracleInteraction
 public import Cslib.Cryptography.Foundations.PolyTimeDistinguisher
+public import Cslib.Cryptography.Foundations.RandomOracle
 public import Cslib.Cryptography.Foundations.SecurityGame
 public import Cslib.Cryptography.Primitives.Commitment
 public import Cslib.Cryptography.Primitives.Encryption
@@ -66,11 +67,13 @@ public import Cslib.Cryptography.Protocols.Combinators
 public import Cslib.Cryptography.Protocols.FiatShamir
 public import Cslib.Cryptography.Protocols.Schnorr
 public import Cslib.Cryptography.Protocols.SigmaProtocol
+public import Cslib.Cryptography.Reductions.FiatShamirROM
 public import Cslib.Cryptography.Reductions.HashToCommitment
 public import Cslib.Cryptography.Reductions.PRFtoEncryption
 public import Cslib.Cryptography.Reductions.PRFtoMAC
 public import Cslib.Cryptography.Reductions.PRGtoEncryption
 public import Cslib.Probability.Discrete
+public import Cslib.Probability.ForkingLemma
 public import Cslib.Foundations.Combinatorics.InfiniteGraphRamsey
 public import Cslib.Foundations.Control.Monad.Free
 public import Cslib.Foundations.Control.Monad.Free.Effects
