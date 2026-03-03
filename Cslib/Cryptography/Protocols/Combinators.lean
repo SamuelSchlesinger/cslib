@@ -40,29 +40,6 @@ private theorem ne_of_cast_ne {α β : Type} (h : α = β) {a b : α}
 
 /-! ### AND Combinator -/
 
-/-- Helper for AND combinator's commitment uniformity: if both sub-protocols
-have uniform commitments, then the product commitment is uniform. -/
-noncomputable def and_commitUniform
-    {R₀ R₁ : EffectiveRelation}
-    (P₀ : SigmaProtocol R₀) (P₁ : SigmaProtocol R₁)
-    (n : ℕ) (w : R₀.Witness n × R₁.Witness n)
-    (y : R₀.Statement n × R₁.Statement n)
-    (hrel : R₀.relation n w.1 y.1 ∧ R₁.relation n w.2 y.2)
-    (f : P₀.Commitment n × P₁.Commitment n → ℝ) :
-    Cslib.Probability.uniformExpect (P₀.ProverRandomness n × P₁.ProverRandomness n)
-      (fun r => f (P₀.commit n w.1 y.1 r.1, P₁.commit n w.2 y.2 r.2)) =
-    Cslib.Probability.uniformExpect (P₀.Commitment n × P₁.Commitment n) f := by
-  simp only [Cslib.Probability.uniformExpect_prod]
-  have inner : ∀ r₀, Cslib.Probability.uniformExpect (P₁.ProverRandomness n)
-    (fun r₁ => f (P₀.commit n w.1 y.1 r₀, P₁.commit n w.2 y.2 r₁)) =
-    Cslib.Probability.uniformExpect (P₁.Commitment n)
-    (fun t₁ => f (P₀.commit n w.1 y.1 r₀, t₁)) :=
-    fun r₀ => P₁.commitmentUniform n w.2 y.2 hrel.2
-      (fun t₁ => f (P₀.commit n w.1 y.1 r₀, t₁))
-  simp_rw [inner]
-  exact P₀.commitmentUniform n w.1 y.1 hrel.1
-    (fun t₀ => Cslib.Probability.uniformExpect (P₁.Commitment n) (fun t₁ => f (t₀, t₁)))
-
 /-- The **AND relation**: `(w₀, w₁)` is a witness for `(y₀, y₁)`
 when `w₀` witnesses `y₀` in `R₀` and `w₁` witnesses `y₁` in `R₁`. -/
 def EffectiveRelation.AND (R₀ R₁ : EffectiveRelation) :
@@ -112,7 +89,6 @@ noncomputable def SigmaProtocol.AND
     simp only [Bool.and_eq_true]
     exact ⟨P₀.completeness n w.1 y.1 r.1 c hrel.1,
            P₁.completeness n w.2 y.2 r.2 _ hrel.2⟩
-  commitmentUniform n w y hrel f := and_commitUniform P₀ P₁ n w y hrel f
 
 /-- The AND combinator **preserves special soundness**: if both
 sub-protocols have special soundness, so does the AND protocol.
@@ -246,96 +222,6 @@ noncomputable def SigmaProtocol.OR
         exact hvzk₀.sim_accepting n y.1 simC s₀
       · -- P₁: honest execution with c₁ = c - simC
         exact P₁.completeness n w₁ y.2 r₁ _ hrel₁
-  commitmentUniform n w y hrel f := by
-    open Cslib.Probability in
-    haveI := hvzk₀.simRandomnessFintype n
-    haveI := hvzk₁.simRandomnessFintype n
-    haveI := hvzk₀.simRandomnessNonempty n
-    haveI := hvzk₁.simRandomnessNonempty n
-    match w, hrel with
-    | .inl w₀, hrel₀ =>
-      -- Commitment = (P₀.commit r₀, (hvzk₁.simulate simC s₁).1)
-      -- Uses r₀ (A), simC (C), s₁ (E); ignores r₁ (B), s₀ (D)
-      have step1 :
-          uniformExpect
-              (P₀.ProverRandomness n × P₁.ProverRandomness n × P₀.Challenge n ×
-                hvzk₀.SimRandomness n × hvzk₁.SimRandomness n)
-              (fun r =>
-                f (P₀.commit n w₀ y.1 r.1,
-                  (hvzk₁.simulate n y.2 (challengeEq n ▸ r.2.2.1) r.2.2.2.2).1)) =
-            uniformExpect
-              (P₀.ProverRandomness n × P₀.Challenge n × hvzk₁.SimRandomness n)
-              (fun r =>
-                f (P₀.commit n w₀ y.1 r.1,
-                  (hvzk₁.simulate n y.2 (challengeEq n ▸ r.2.1) r.2.2).1)) := by
-        simpa using uniformExpect_prod5_ignore_bd
-          (B := P₁.ProverRandomness n) (D := hvzk₀.SimRandomness n)
-          (fun r₀ simC s₁ =>
-            f (P₀.commit n w₀ y.1 r₀,
-               (hvzk₁.simulate n y.2 (challengeEq n ▸ simC) s₁).1))
-      simp
-      conv_lhs =>
-        arg 2
-        ext r
-        change f (P₀.commit n w₀ y.1 r.1,
-          (hvzk₁.simulate n y.2 (challengeEq n ▸ r.2.2.1) r.2.2.2.2).1)
-      dsimp
-      erw [step1]
-      rw [uniformExpect_prod, uniformExpect_prod]
-      have inner_sim : ∀ r₀ simC,
-          uniformExpect (hvzk₁.SimRandomness n) (fun s₁ =>
-            f (P₀.commit n w₀ y.1 r₀,
-               (hvzk₁.4 n y.2 (challengeEq n ▸ simC) s₁).1)) =
-          uniformExpect (P₁.Commitment n) (fun t₁ =>
-            f (P₀.commit n w₀ y.1 r₀, t₁)) :=
-        fun r₀ simC => by
-          simpa using hvzk₁.simCommitmentUniform n y.2 (challengeEq n ▸ simC)
-            (fun t₁ => f (P₀.commit n w₀ y.1 r₀, t₁))
-      simp_rw [inner_sim, uniformExpect_const]
-      exact P₀.commitmentUniform n w₀ y.1 hrel₀
-        (fun t₀ => uniformExpect (P₁.Commitment n) (fun t₁ => f (t₀, t₁)))
-    | .inr w₁, hrel₁ =>
-      -- Commitment = ((hvzk₀.simulate simC s₀).1, P₁.commit r₁)
-      -- Uses r₁ (B), simC (C), s₀ (D); ignores r₀ (A), s₁ (E)
-      have step1 :
-          uniformExpect
-              (P₀.ProverRandomness n × P₁.ProverRandomness n × P₀.Challenge n ×
-                hvzk₀.SimRandomness n × hvzk₁.SimRandomness n)
-              (fun r =>
-                f ((hvzk₀.simulate n y.1 r.2.2.1 r.2.2.2.1).1,
-                  P₁.commit n w₁ y.2 r.2.1)) =
-            uniformExpect
-              (P₁.ProverRandomness n × P₀.Challenge n × hvzk₀.SimRandomness n)
-              (fun r =>
-                f ((hvzk₀.simulate n y.1 r.2.1 r.2.2).1,
-                  P₁.commit n w₁ y.2 r.1)) := by
-        simpa using uniformExpect_prod5_ignore_ae
-          (A := P₀.ProverRandomness n) (E := hvzk₁.SimRandomness n)
-          (fun r₁ simC s₀ =>
-            f ((hvzk₀.simulate n y.1 simC s₀).1,
-               P₁.commit n w₁ y.2 r₁))
-      simp
-      conv_lhs =>
-        arg 2
-        ext r
-        change f ((hvzk₀.simulate n y.1 r.2.2.1 r.2.2.2.1).1,
-          P₁.commit n w₁ y.2 r.2.1)
-      dsimp
-      erw [step1]
-      rw [uniformExpect_prod, uniformExpect_prod, uniformExpect_prod]
-      have inner_sim : ∀ r₁ simC,
-          uniformExpect (hvzk₀.SimRandomness n) (fun s₀ =>
-            f ((hvzk₀.4 n y.1 simC s₀).1,
-               P₁.commit n w₁ y.2 r₁)) =
-          uniformExpect (P₀.Commitment n) (fun t₀ =>
-            f (t₀, P₁.commit n w₁ y.2 r₁)) :=
-        fun r₁ simC => by
-          simpa using hvzk₀.simCommitmentUniform n y.1 simC
-            (fun t₀ => f (t₀, P₁.commit n w₁ y.2 r₁))
-      simp_rw [inner_sim, uniformExpect_const]
-      rw [uniformExpect_comm]
-      congr 1; ext t₀
-      exact P₁.commitmentUniform n w₁ y.2 hrel₁ (fun t₁ => f (t₀, t₁))
 
 /-- The OR combinator **preserves special soundness** (CDS94):
 from two accepting conversations `(t, c, z)` and `(t, c', z')` with the
@@ -522,44 +408,5 @@ noncomputable def SigmaProtocol.OR.specialHVZK
       -- Now: E_{s₀}[E_{s₁'}[E_{simC}[...]]] = E_{s₀'}[E_{s₁'}[E_{c₀}[...]]]
       -- Step 6: Bodies are equal pointwise
       congr 1
-  simCommitmentUniform n y c f := by
-    open Cslib.Probability in
-    letI := hvzk₀.simRandomnessFintype n
-    letI := hvzk₁.simRandomnessFintype n
-    letI := hvzk₀.simRandomnessNonempty n
-    letI := hvzk₁.simRandomnessNonempty n
-    let ch : P₀.Challenge n := c
-    dsimp only [SigmaProtocol.OR]
-    rw [uniformExpect_prod]
-    simp_rw [uniformExpect_prod]
-    -- E_{s₀}[E_{s₁}[E_{c₀}[...]]]
-    rw [uniformExpect_comm]
-    simp_rw [uniformExpect_comm (hvzk₀.SimRandomness n)]
-    have inner₀ : ∀ s₁ c₀,
-        uniformExpect (hvzk₀.SimRandomness n) (fun s₀ =>
-          f ((hvzk₀.simulate n y.1 c₀ s₀).1,
-             (hvzk₁.simulate n y.2 (challengeEq n ▸ (ch - c₀)) s₁).1)) =
-        uniformExpect (P₀.Commitment n) (fun t₀ =>
-          f (t₀, (hvzk₁.simulate n y.2 (challengeEq n ▸ (ch - c₀)) s₁).1)) :=
-      fun s₁ c₀ =>
-        hvzk₀.simCommitmentUniform n y.1 c₀
-          (fun t₀ =>
-            f (t₀, (hvzk₁.simulate n y.2 (challengeEq n ▸ (ch - c₀)) s₁).1))
-    simp_rw [inner₀]
-    -- E_{s₁}[E_{c₀}[E_{t₀}[...]]]
-    rw [uniformExpect_comm]
-    have inner₁ : ∀ c₀,
-        uniformExpect (hvzk₁.SimRandomness n) (fun s₁ =>
-          uniformExpect (P₀.Commitment n) (fun t₀ =>
-            f (t₀, (hvzk₁.simulate n y.2 (challengeEq n ▸ (ch - c₀)) s₁).1))) =
-        uniformExpect (P₁.Commitment n) (fun t₁ =>
-          uniformExpect (P₀.Commitment n) (fun t₀ => f (t₀, t₁))) :=
-      fun c₀ =>
-        hvzk₁.simCommitmentUniform n y.2 (challengeEq n ▸ (ch - c₀))
-          (fun t₁ =>
-            uniformExpect (P₀.Commitment n) (fun t₀ => f (t₀, t₁)))
-    simp_rw [inner₁, uniformExpect_const]
-    rw [uniformExpect_comm]
-    exact (uniformExpect_prod (P₀.Commitment n) (P₁.Commitment n) f).symm
 
 end
