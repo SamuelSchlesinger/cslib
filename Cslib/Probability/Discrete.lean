@@ -325,6 +325,177 @@ theorem quadratic_sqrt_bound {acc q ε C : ℝ}
     _ ≤ Real.sqrt (q * ε + q / C) := by
         exact Real.sqrt_le_sqrt h3
 
+/-- **Fundamental lemma of game hopping**: if two `[0,1]`-valued functions
+agree except on a "bad" event, the difference of their expectations is
+bounded by the probability of the bad event.
+
+This is the key tool for bounding the gap in game-hopping proofs:
+when transitioning from Game 0 to Game 1, the adversary's advantage
+changes by at most the probability that the "bad" distinguishing
+event occurs. -/
+theorem uniformExpect_game_hop (α : Type*) [Fintype α] [Nonempty α]
+    (f₀ f₁ : α → ℝ) (bad : α → Prop) [DecidablePred bad]
+    (h_agree : ∀ a, ¬bad a → f₀ a = f₁ a)
+    (h0_nn : ∀ a, 0 ≤ f₀ a) (h0_le : ∀ a, f₀ a ≤ 1)
+    (h1_nn : ∀ a, 0 ≤ f₁ a) (h1_le : ∀ a, f₁ a ≤ 1) :
+    |uniformExpect α f₀ - uniformExpect α f₁| ≤
+    uniformExpect α (fun a => if bad a then 1 else 0) := by
+  -- |E[f₀] - E[f₁]| = |E[f₀ - f₁]| ≤ E[|f₀ - f₁|] ≤ E[1{bad}]
+  rw [← uniformExpect_sub]
+  refine le_trans (uniformExpect_abs_le α _) ?_
+  apply uniformExpect_mono
+  intro a
+  by_cases h : bad a
+  · -- bad a: |f₀ a - f₁ a| ≤ 1
+    simp only [h, ite_true]
+    rw [abs_le]; exact ⟨by linarith [h0_nn a, h1_le a],
+                         by linarith [h0_le a, h1_nn a]⟩
+  · -- ¬bad a: f₀ a = f₁ a, so |f₀ a - f₁ a| = 0
+    simp only [h, ite_false]
+    rw [h_agree a h, sub_self, abs_zero]
+
+/-- Factor out unused components from a product expectation. Given a 5-tuple
+`A × B × C × D × E`, if the function only uses the `A`, `B`, and `C` components,
+the expectation equals the expectation over `A × B × C`. -/
+theorem uniformExpect_prod5_ignore_de {A B C D E : Type*}
+    [Fintype A] [Nonempty A] [Fintype B] [Nonempty B]
+    [Fintype C] [Nonempty C] [Fintype D] [Nonempty D] [Fintype E] [Nonempty E]
+    (g : A → B → C → ℝ) :
+    uniformExpect (A × B × C × D × E)
+      (fun r => g r.1 r.2.1 r.2.2.1) =
+    uniformExpect (A × B × C)
+      (fun r => g r.1 r.2.1 r.2.2) := by
+  simp only [uniformExpect_eq, Fintype.card_prod, Nat.cast_mul]
+  simp_rw [Fintype.sum_prod_type]
+  simp only [Finset.sum_const, Finset.card_univ, nsmul_eq_mul]
+  have hD : (Fintype.card D : ℝ) ≠ 0 := Nat.cast_ne_zero.mpr Fintype.card_ne_zero
+  have hE : (Fintype.card E : ℝ) ≠ 0 := Nat.cast_ne_zero.mpr Fintype.card_ne_zero
+  field_simp
+  simp_rw [← Finset.mul_sum]
+
+/-- Factor out unused components from a product expectation. Given a 5-tuple
+`A × B × C × D × E`, if the function only uses the `A`, `D`, and `E` components,
+the expectation equals the expectation over `A × D × E`. -/
+theorem uniformExpect_prod5_ignore_bc {A B C D E : Type*}
+    [Fintype A] [Nonempty A] [Fintype B] [Nonempty B]
+    [Fintype C] [Nonempty C] [Fintype D] [Nonempty D] [Fintype E] [Nonempty E]
+    (g : A → D → E → ℝ) :
+    uniformExpect (A × B × C × D × E)
+      (fun r => g r.1 r.2.2.2.1 r.2.2.2.2) =
+    uniformExpect (A × D × E)
+      (fun r => g r.1 r.2.1 r.2.2) := by
+  simp only [uniformExpect_eq, Fintype.card_prod, Nat.cast_mul]
+  simp_rw [Fintype.sum_prod_type]
+  simp only [Finset.sum_const, Finset.card_univ, nsmul_eq_mul]
+  have hB : (Fintype.card B : ℝ) ≠ 0 := Nat.cast_ne_zero.mpr Fintype.card_ne_zero
+  have hC : (Fintype.card C : ℝ) ≠ 0 := Nat.cast_ne_zero.mpr Fintype.card_ne_zero
+  field_simp
+  simp_rw [← Finset.mul_sum]
+
+/-- Union bound for indicators: `1{∃ i, P i a} ≤ ∑ i, 1{P i a}`. -/
+theorem indicator_exists_le_sum {α : Type*} {n : ℕ}
+    (P : Fin n → α → Prop) [∀ i, DecidablePred (P i)] (a : α) :
+    (if ∃ i, P i a then (1 : ℝ) else 0) ≤ ∑ i : Fin n, (if P i a then 1 else 0) := by
+  by_cases h : ∃ i, P i a
+  · simp only [h, ite_true]
+    obtain ⟨i, hi⟩ := h
+    have h_nonneg : ∀ j : Fin n, j ∈ Finset.univ →
+        0 ≤ (if P j a then (1 : ℝ) else 0) :=
+      fun j _ => ite_nonneg zero_le_one (le_refl 0)
+    have h_le := Finset.single_le_sum h_nonneg (Finset.mem_univ i)
+    simp only [hi, ite_true] at h_le
+    exact h_le
+  · simp only [h, ite_false]
+    exact Finset.sum_nonneg fun j _ => ite_nonneg zero_le_one (le_refl 0)
+
+/-- Pull a `Finset.univ` sum out of `uniformExpect`:
+`E[∑ s ∈ univ, f s a] = ∑ s ∈ univ, E[f s a]`. -/
+theorem uniformExpect_finset_sum {α S : Type*} [Fintype α] [Nonempty α] [Fintype S]
+    (f : S → α → ℝ) :
+    uniformExpect α (fun a => ∑ s : S, f s a) =
+      ∑ s : S, uniformExpect α (f s) := by
+  unfold uniformExpect
+  simp_rw [Finset.mul_sum]
+  exact Finset.sum_comm
+
+/-- For a uniform pair of coordinates from `Fin q → T`, the collision
+probability is `1/|T|`. -/
+theorem uniformExpect_collision_pair {T : Type*} [Fintype T] [Nonempty T] [DecidableEq T]
+    {q : ℕ} (i j : Fin q) (hij : i ≠ j) :
+    uniformExpect (Fin q → T)
+      (fun ts => if ts i = ts j then (1 : ℝ) else 0) =
+    1 / Fintype.card T := by
+  -- Split at coordinate i: (Fin q → T) ≃ T × ({k // k ≠ i} → T)
+  -- After splitting, ts i = p.1 and ts j = p.2 ⟨j, Ne.symm hij⟩
+  have h_comp : (fun ts : Fin q → T => if ts i = ts j then (1 : ℝ) else 0) =
+      (fun p : T × ({k : Fin q // k ≠ i} → T) =>
+        if p.1 = p.2 ⟨j, Ne.symm hij⟩ then 1 else 0) ∘ Equiv.funSplitAt i T := by
+    ext ts; simp [Equiv.funSplitAt, Equiv.piSplitAt]
+  rw [h_comp, uniformExpect_congr]
+  haveI : Nonempty ({k : Fin q // k ≠ i} → T) := ⟨fun _ => ‹Nonempty T›.some⟩
+  rw [uniformExpect_prod]
+  -- Goal: E_{ti}[E_{rest}[1{ti = rest ⟨j, ...⟩}]] = 1/|T|
+  -- Swap to E_{rest}[E_{ti}[1{ti = rest ⟨j, ...⟩}]] so the inner is over T
+  rw [uniformExpect_comm]
+  -- Now: E_{rest}[E_{ti}[1{ti = rest ⟨j, ...⟩}]] = 1/|T|
+  -- For any c, E_{ti}[1{ti = c}] = 1/|T|
+  have h_inner : ∀ c : T,
+      uniformExpect T (fun ti => if ti = c then (1 : ℝ) else 0) =
+      1 / Fintype.card T := by
+    intro c
+    rw [uniformExpect_eq, Finset.sum_ite_eq', if_pos (Finset.mem_univ c)]
+    simp [one_div]
+  simp_rw [h_inner, uniformExpect_const]
+
+/-- **Birthday bound**: for `q` uniform i.i.d. samples from a set of size `|T|`,
+the probability that any two collide is at most `q² / |T|`. -/
+theorem birthday_bound {T : Type*} [Fintype T] [Nonempty T] [DecidableEq T] (q : ℕ) :
+    uniformExpect (Fin q → T)
+      (fun ts => if ∃ (i j : Fin q), i < j ∧ ts i = ts j then (1 : ℝ) else 0) ≤
+    (q : ℝ) ^ 2 / Fintype.card T := by
+  -- Step 1: Union bound — indicator of ∃ ≤ sum of indicators over pairs
+  have h_union : ∀ ts : Fin q → T,
+      (if ∃ (i j : Fin q), i < j ∧ ts i = ts j then (1 : ℝ) else 0) ≤
+      ∑ p : Fin q × Fin q,
+        if p.1 < p.2 ∧ ts p.1 = ts p.2 then 1 else 0 := by
+    intro ts
+    split
+    · next h =>
+      obtain ⟨i, j, hij, heq⟩ := h
+      have h_nonneg : ∀ p : Fin q × Fin q, p ∈ Finset.univ →
+          0 ≤ (if p.1 < p.2 ∧ ts p.1 = ts p.2 then (1 : ℝ) else 0) :=
+        fun p _ => ite_nonneg zero_le_one (le_refl 0)
+      have h_le := Finset.single_le_sum h_nonneg (Finset.mem_univ (i, j))
+      simp only [hij, heq, and_self, ite_true] at h_le
+      exact h_le
+    · exact Finset.sum_nonneg fun p _ => ite_nonneg zero_le_one (le_refl 0)
+  -- Step 2: E[∑ pair, ...] = ∑ pair, E[...] by linearity, then bound each pair
+  calc uniformExpect (Fin q → T)
+        (fun ts => if ∃ (i j : Fin q), i < j ∧ ts i = ts j then (1 : ℝ) else 0)
+      ≤ uniformExpect (Fin q → T)
+          (fun ts => ∑ p : Fin q × Fin q,
+            if p.1 < p.2 ∧ ts p.1 = ts p.2 then 1 else 0) :=
+        uniformExpect_mono _ h_union
+    _ = ∑ p : Fin q × Fin q, uniformExpect (Fin q → T)
+          (fun ts => if p.1 < p.2 ∧ ts p.1 = ts p.2 then 1 else 0) :=
+        uniformExpect_finset_sum _
+    _ ≤ ∑ _p : Fin q × Fin q, (1 / Fintype.card T : ℝ) := by
+        apply Finset.sum_le_sum; intro ⟨i, j⟩ _
+        by_cases hij : i < j
+        · simp only [hij, true_and]
+          exact le_of_eq (uniformExpect_collision_pair i j (ne_of_lt hij))
+        · -- When ¬(i < j), the indicator is always 0
+          calc uniformExpect (Fin q → T)
+                (fun ts => if i < j ∧ ts i = ts j then (1 : ℝ) else 0)
+              = uniformExpect (Fin q → T) (fun _ => 0) := by
+                congr 1; ext ts; simp [hij]
+            _ = 0 := uniformExpect_const _ 0
+            _ ≤ 1 / Fintype.card T := by positivity
+    _ = (Fintype.card (Fin q × Fin q) : ℝ) * (1 / Fintype.card T) := by
+        simp [Finset.sum_const, Finset.card_univ, nsmul_eq_mul]
+    _ ≤ (q : ℝ) ^ 2 / Fintype.card T := by
+        simp [Fintype.card_prod, Fintype.card_fin]; ring_nf; exact le_refl _
+
 end Cslib.Probability
 
 end

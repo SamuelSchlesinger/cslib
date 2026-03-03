@@ -60,6 +60,15 @@ This is the NP relation underlying Schnorr's protocol. -/
 The verification equation uses `y ^ (ZMod.val c)` for the group
 exponentiation `u^c`, which is well-defined since the group has
 order dividing `q`. -/
+noncomputable def schnorr_commitUniform (C : CyclicGroupFamily) (n : ℕ)
+    [Fintype (ZMod (C.order n))] [Nonempty (ZMod (C.order n))]
+    [Fintype (C.Group n)] [Nonempty (C.Group n)]
+    (f : C.Group n → ℝ) :
+    Cslib.Probability.uniformExpect (ZMod (C.order n)) (fun r => f (C.gpow n r)) =
+    Cslib.Probability.uniformExpect (C.Group n) f :=
+  Cslib.Probability.uniformExpect_congr
+    (Equiv.ofBijective (C.gpow n) ⟨C.gpow_injective n, C.gpow_surjective n⟩) f
+
 @[reducible] noncomputable def SchnorrProtocol (C : CyclicGroupFamily) :
     SigmaProtocol (SchnorrRelation C) where
   Commitment n := C.Group n
@@ -84,6 +93,7 @@ order dividing `q`. -/
     -- hrel : C.gpow n w = y (the DL relation)
     change C.gpow n w = y at hrel
     rw [C.gpow_add, ← hrel, C.gpow_mul' n w c]
+  commitmentUniform n _w _y _hw f := schnorr_commitUniform C n f
 
 /-- **Special soundness** for the Schnorr protocol: from two accepting
 conversations `(u_t, c, α_z)` and `(u_t, c', α_z')` with `c ≠ c'`,
@@ -183,6 +193,11 @@ noncomputable def schnorrSpecialHVZK (C : CyclicGroupFamily) :
           C.gpow_add, C.gpow_mul' n w c, hrel, mul_inv_cancel_right]
       · -- α_t + w * c = σ(α_t)
         rfl)
+  simCommitmentUniform n y c f :=
+    Cslib.Probability.uniformExpect_congr
+      ((Equiv.ofBijective (C.gpow n)
+        ⟨C.gpow_injective n, C.gpow_surjective n⟩).trans
+       (Equiv.mulRight (y ^ (ZMod.val c))⁻¹)) f
 
 /-- The **Schnorr signature scheme**: the Fiat-Shamir transform
 applied to the Schnorr protocol.
