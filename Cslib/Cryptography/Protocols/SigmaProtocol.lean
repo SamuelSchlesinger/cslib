@@ -106,6 +106,19 @@ structure SigmaProtocol (R : EffectiveRelation) where
     (r : ProverRandomness n) (c : Challenge n),
     R.relation n w y →
     verify n y (commit n w y r) c (respond n w y r c) = true
+  /-- **Commitment uniformity**: for any valid `(w, y)`, the commitment
+  function `commit(w, y, ·)` pushes the uniform distribution on
+  `ProverRandomness` to the uniform distribution on `Commitment`.
+  Equivalently, `E_r[f(commit(w, y, r))] = E_t[f(t)]` for all `f`.
+
+  This holds for all standard Sigma protocols (e.g., Schnorr, where
+  commitments are `g^r` for uniform `r`). -/
+  commitmentUniform : ∀ n (w : R.Witness n) (y : R.Statement n),
+    R.relation n w y →
+    ∀ (f : Commitment n → ℝ),
+    Cslib.Probability.uniformExpect (ProverRandomness n)
+      (fun r => f (commit n w y r)) =
+    Cslib.Probability.uniformExpect (Commitment n) f
 
 attribute [instance] SigmaProtocol.commitmentFintype
   SigmaProtocol.commitmentNonempty SigmaProtocol.commitmentDecEq
@@ -114,6 +127,83 @@ attribute [instance] SigmaProtocol.commitmentFintype
   SigmaProtocol.responseNonempty
   SigmaProtocol.proverRandomnessFintype
   SigmaProtocol.proverRandomnessNonempty
+
+open Cslib.Probability in
+/-- Each commitment value has probability exactly `1/|Commitment|`. -/
+theorem SigmaProtocol.commit_prob_eq {R : EffectiveRelation} (P : SigmaProtocol R)
+    (n : ℕ) (w : R.Witness n) (y : R.Statement n) (t₀ : P.Commitment n)
+    (hw : R.relation n w y) :
+    uniformExpect (P.ProverRandomness n)
+      (fun r => if P.commit n w y r = t₀ then (1 : ℝ) else 0) =
+    1 / Fintype.card (P.Commitment n) := by
+  have h := P.commitmentUniform n w y hw (fun t => if t = t₀ then 1 else 0)
+  simp only [h, uniformExpect_eq, Finset.sum_ite_eq', Finset.mem_univ, ite_true]
+  ring
+
+/-- **Product commitment uniformity**: the tuple of commitments
+`(commit(w,y,rs₀), ..., commit(w,y,rs_{q-1}))` is uniformly
+distributed when `rs : Fin q → ProverRandomness` is uniform.
+
+This extends `commitmentUniform` (single coordinate) to the product
+distribution over `q` independent signing queries. -/
+theorem SigmaProtocol.commitmentUniform_prod {R : EffectiveRelation}
+    (P : SigmaProtocol R) (n : ℕ) (q : ℕ)
+    (w : R.Witness n) (y : R.Statement n) (hw : R.relation n w y)
+    (f : (Fin q → P.Commitment n) → ℝ) :
+    Cslib.Probability.uniformExpect (Fin q → P.ProverRandomness n)
+      (fun rs => f (fun i => P.commit n w y (rs i))) =
+    Cslib.Probability.uniformExpect (Fin q → P.Commitment n) f := by
+  induction q with
+  | zero =>
+    -- Both Fin 0 → α are singletons; both sides equal f(Fin.elim0)
+    have h1 : (fun rs : Fin 0 → P.ProverRandomness n =>
+        f (fun i => P.commit n w y (rs i))) = fun _ => f Fin.elim0 :=
+      funext fun rs => congr_arg f (funext fun i => i.elim0)
+    rw [h1, Cslib.Probability.uniformExpect_const]
+    have h2 : f = fun _ => f Fin.elim0 :=
+      funext fun ts => congr_arg f (funext fun i => i.elim0)
+    rw [h2, Cslib.Probability.uniformExpect_const]
+  | succ q ih =>
+    open Cslib.Probability in
+    haveI : Nonempty (Fin q → P.ProverRandomness n) := inferInstance
+    haveI : Nonempty (Fin q → P.Commitment n) := inferInstance
+    -- Decompose (Fin (q+1) → α) ≃ α × (Fin q → α) via Fin.consEquiv
+    let eR := (Fin.consEquiv (fun _ : Fin (q + 1) => P.ProverRandomness n)).symm
+    let eC := (Fin.consEquiv (fun _ : Fin (q + 1) => P.Commitment n)).symm
+    -- Decompose LHS via consEquiv
+    have h_lhs : (fun rs : Fin (q + 1) → P.ProverRandomness n =>
+        f (fun i => P.commit n w y (rs i))) =
+      (fun p : P.ProverRandomness n × (Fin q → P.ProverRandomness n) =>
+        f (Fin.cons (P.commit n w y p.1)
+          (fun j => P.commit n w y (p.2 j)))) ∘ eR := by
+      ext rs; simp only [Function.comp_apply, eR]
+      congr 1; exact (Fin.cons_self_tail _).symm
+    -- Decompose RHS via consEquiv
+    have h_rhs : f = (fun p : P.Commitment n × (Fin q → P.Commitment n) =>
+        f (Fin.cons p.1 p.2)) ∘ eC := by
+      ext ts; simp only [Function.comp_apply, eC]
+      congr 1; exact (Fin.cons_self_tail ts).symm
+    -- Forward-decompose both sides, then connect in the middle
+    rw [h_lhs, uniformExpect_congr, uniformExpect_prod]
+    rw [h_rhs, uniformExpect_congr, uniformExpect_prod]
+    -- Force goal into beta-reduced form
+    change uniformExpect (P.ProverRandomness n) (fun r₀ =>
+        uniformExpect (Fin q → P.ProverRandomness n) (fun rs' =>
+          f (Fin.cons (P.commit n w y r₀)
+            (fun j => P.commit n w y (rs' j))))) =
+      uniformExpect (P.Commitment n) (fun t₀ =>
+        uniformExpect (Fin q → P.Commitment n) (fun ts' =>
+          f (Fin.cons t₀ ts')))
+    -- IH rewrites inner, commitmentUniform rewrites outer
+    simp_rw [show ∀ r₀ : P.ProverRandomness n,
+        uniformExpect (Fin q → P.ProverRandomness n) (fun rs' =>
+          f (Fin.cons (P.commit n w y r₀) (fun j => P.commit n w y (rs' j)))) =
+        uniformExpect (Fin q → P.Commitment n) (fun ts' =>
+          f (Fin.cons (P.commit n w y r₀) ts'))
+      from fun r₀ => ih (fun ts' => f (Fin.cons (P.commit n w y r₀) ts'))]
+    exact P.commitmentUniform n w y hw
+      (fun t₀ => uniformExpect (Fin q → P.Commitment n)
+        (fun ts' => f (Fin.cons t₀ ts')))
 
 /-- **Special soundness** (Def 19.4 in Boneh-Shoup): from two
 accepting conversations `(t, c, z)` and `(t, c', z')` sharing the
@@ -171,5 +261,13 @@ structure SigmaProtocol.SpecialHVZK {R : EffectiveRelation}
       (fun r => f (P.commit n w y r, P.respond n w y r c)) =
     Cslib.Probability.uniformExpect (SimRandomness n)
       (fun s => f (simulate n y c s))
+  /-- The simulator's commitment marginal is uniform: for any statement
+  `y` and challenge `c`, the map `s ↦ (simulate y c s).1` pushes the
+  uniform distribution on `SimRandomness` to uniform on `Commitment`. -/
+  simCommitmentUniform : ∀ n (y : R.Statement n) (c : P.Challenge n)
+      (f : P.Commitment n → ℝ),
+      Cslib.Probability.uniformExpect (SimRandomness n)
+        (fun s => f (simulate n y c s).1) =
+      Cslib.Probability.uniformExpect (P.Commitment n) f
 
 end

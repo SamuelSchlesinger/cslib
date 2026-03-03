@@ -83,7 +83,7 @@ noncomputable def simGame_run_stmt {R : EffectiveRelation}
   match (A.interact n y).run q oracle with
   | none => none
   | some (queries, mf, tf, zf) =>
-    let j := queries.findIdx (· == .inr (mf, tf))
+    let j := queries.findIdx (fun x => decide (x = .inr (mf, tf)))
     if hj : j < q then
       let signMsgs := queries.filterMap (fun q => match q with
         | .inl m => some m | .inr _ => none)
@@ -156,7 +156,291 @@ theorem game_hop_bound {R : EffectiveRelation}
     |(ROM_EUF_CMA_Game P Msg keyOf).advantage A n -
      (ROM_EUF_CMA_SimGame P Msg keyOf hvzk).advantage A n| ≤
       (A.numQueries n : ℝ) ^ 2 / Fintype.card (P.Commitment n) := by
-  sorry
+  letI : Fintype (hvzk.SimRandomness n) := hvzk.simRandomnessFintype n
+  letI : Nonempty (hvzk.SimRandomness n) := hvzk.simRandomnessNonempty n
+  letI : Fintype (P.Challenge n) := P.challengeFintype n
+  letI : Nonempty (P.Challenge n) := P.challengeNonempty n
+  -- Both advantages are in [0, 1]
+  have h0_nn : 0 ≤ (ROM_EUF_CMA_Game P Msg keyOf).advantage A n := by
+    unfold ROM_EUF_CMA_Game
+    apply uniformExpect_nonneg
+    intro ⟨_, _, _⟩; dsimp only
+    generalize (A.interact _ _).run _ _ = result
+    cases result with
+    | none => exact le_refl 0
+    | some _ => exact boolToReal_nonneg _
+  have h0_le : (ROM_EUF_CMA_Game P Msg keyOf).advantage A n ≤ 1 := by
+    unfold ROM_EUF_CMA_Game
+    refine le_trans (uniformExpect_mono _ ?_) (le_of_eq (uniformExpect_const _ 1))
+    intro ⟨_, _, _⟩; dsimp only
+    generalize (A.interact _ _).run _ _ = result
+    cases result with
+    | none => norm_num
+    | some _ => exact boolToReal_le_one _
+  have h1_nn : 0 ≤ (ROM_EUF_CMA_SimGame P Msg keyOf hvzk).advantage A n := by
+    change 0 ≤ forkAcceptProb
+      (R.Witness n × (Fin (A.numQueries n) → hvzk.SimRandomness n))
+      (P.Challenge n) (A.numQueries n) (simGame_run P Msg keyOf hvzk A n)
+    exact forkAcceptProb_nonneg _ _ _ _
+  have h1_le : (ROM_EUF_CMA_SimGame P Msg keyOf hvzk).advantage A n ≤ 1 := by
+    change forkAcceptProb
+      (R.Witness n × (Fin (A.numQueries n) → hvzk.SimRandomness n))
+      (P.Challenge n) (A.numQueries n) (simGame_run P Msg keyOf hvzk A n) ≤ 1
+    exact forkAcceptProb_le_one _ _ _ _
+  -- Commitment space has positive cardinality
+  have hT_pos : (0 : ℝ) < Fintype.card (P.Commitment n) :=
+    Nat.cast_pos.mpr Fintype.card_pos
+  -- Case: q²/|T| ≥ 1 (trivial bound since both advantages ∈ [0,1])
+  by_cases hcase : (A.numQueries n) ^ 2 ≥ Fintype.card (P.Commitment n)
+  · have hcase_R : (Fintype.card (P.Commitment n) : ℝ) ≤ (A.numQueries n : ℝ) ^ 2 := by
+      exact_mod_cast hcase
+    calc |(ROM_EUF_CMA_Game P Msg keyOf).advantage A n -
+            (ROM_EUF_CMA_SimGame P Msg keyOf hvzk).advantage A n|
+        ≤ 1 := by rw [abs_le]; constructor <;> linarith
+      _ ≤ (A.numQueries n : ℝ) ^ 2 / Fintype.card (P.Commitment n) := by
+          have h := div_le_div_of_nonneg_right hcase_R (le_of_lt hT_pos)
+          rw [div_self (ne_of_gt hT_pos)] at h; exact h
+  · -- Main case: q² < |T|. Game-hopping argument via uniformExpect_game_hop.
+    push_neg at hcase
+    letI : DecidableEq (P.Commitment n) := P.commitmentDecEq n
+    set q := A.numQueries n with hq_def
+    -- ── Common probability space ──
+    -- Ω = W × H × RS × SR × CH
+    -- Game 0 uses (w, H, rs); Game 1 uses (w, sr, ch).
+    let Ω := R.Witness n ×
+             (Msg n × P.Commitment n → P.Challenge n) ×
+             (Fin q → P.ProverRandomness n) ×
+             (Fin q → hvzk.SimRandomness n) ×
+             (Fin q → P.Challenge n)
+    -- Game 0 body (curried, for marginalization lemma compatibility)
+    let g₀ : R.Witness n → (Msg n × P.Commitment n → P.Challenge n) →
+        (Fin q → P.ProverRandomness n) → ℝ := fun w H rs =>
+      let y := keyOf n w
+      let oracle : Fin q →
+          (Msg n ⊕ (Msg n × P.Commitment n)) →
+          ((P.Commitment n × P.Response n) ⊕ P.Challenge n) :=
+        fun i qry => match qry with
+        | .inl m =>
+          let t := P.commit n w y (rs i)
+          .inl (t, P.respond n w y (rs i) (H (m, t)))
+        | .inr mt => .inr (H mt)
+      match (A.interact n y).run q oracle with
+      | none => 0
+      | some (queries, mf, tf, zf) =>
+        let signMsgs := queries.filterMap (fun q => match q with
+          | .inl m => some m | .inr _ => none)
+        boolToReal (P.verify n y tf (H (mf, tf)) zf && !(signMsgs.contains mf))
+    -- Game 0 function on Ω (depends only on w, H, rs)
+    let f₀ : Ω → ℝ := fun r => g₀ r.1 r.2.1 r.2.2.1
+    -- Game 1 body (curried)
+    let g₁ : R.Witness n → (Fin q → hvzk.SimRandomness n) →
+        (Fin q → P.Challenge n) → ℝ := fun w sr ch =>
+      match simGame_run_stmt P Msg hvzk A n (keyOf n w) sr ch with
+      | none => 0
+      | some _ => 1
+    -- Game 1 function on Ω (depends only on w, sr, ch)
+    let f₁ : Ω → ℝ := fun r => g₁ r.1 r.2.2.2.1 r.2.2.2.2
+    -- Bad event body (curried)
+    let gBad : R.Witness n → (Fin q → P.ProverRandomness n) → Prop :=
+      fun w rs => ∃ (i j : Fin q), i < j ∧
+        P.commit n w (keyOf n w) (rs i) = P.commit n w (keyOf n w) (rs j)
+    -- Bad event: commitment collision among signing queries
+    let bad : Ω → Prop := fun r => gBad r.1 r.2.2.1
+    -- ── Lift advantages to Ω ──
+    have h_adv0 : (ROM_EUF_CMA_Game P Msg keyOf).advantage A n =
+        uniformExpect Ω f₀ := by
+      -- Game 0 coins = W × H × RS; f₀ only uses (W, H, RS) components.
+      -- Marginalizing out (SR, CH) gives the Game 0 advantage.
+      symm; exact uniformExpect_prod5_ignore_de g₀
+    have h_adv1 : (ROM_EUF_CMA_SimGame P Msg keyOf hvzk).advantage A n =
+        uniformExpect Ω f₁ := by
+      -- The advantage is forkAcceptProb = uniformExpect ((W×SR)×CH) body
+      -- We marginalize Ω to W×SR×CH and reassociate to match.
+      symm
+      calc uniformExpect Ω f₁
+        -- Step 1: Marginalize Ω to W × (SR × CH)
+        _ = uniformExpect (R.Witness n × (Fin q → hvzk.SimRandomness n) ×
+              (Fin q → P.Challenge n)) (fun r => g₁ r.1 r.2.1 r.2.2) :=
+            uniformExpect_prod5_ignore_bc g₁
+        -- Step 2: Re-associate W × (SR × CH) → (W × SR) × CH
+        _ = uniformExpect ((R.Witness n × (Fin q → hvzk.SimRandomness n)) ×
+              (Fin q → P.Challenge n))
+              (fun r => g₁ r.1.1 r.1.2 r.2) :=
+            uniformExpect_congr
+              (Equiv.prodAssoc (R.Witness n) (Fin q → hvzk.SimRandomness n)
+                (Fin q → P.Challenge n)).symm (fun r => g₁ r.1.1 r.1.2 r.2)
+        -- Step 3: This equals forkAcceptProb = SimGame advantage
+        _ = (ROM_EUF_CMA_SimGame P Msg keyOf hvzk).advantage A n := by
+            show _ = forkAcceptProb _ _ q (simGame_run P Msg keyOf hvzk A n)
+            simp only [forkAcceptProb]
+            congr 1; ext ⟨⟨w, sr⟩, ch⟩
+            show g₁ w sr ch = _
+            dsimp only [g₁, simGame_run]
+            cases simGame_run_stmt P Msg hvzk A n (keyOf n w) sr ch <;> rfl
+    -- ── f₀ and f₁ are [0,1]-valued ──
+    have h_f0_nn : ∀ ω : Ω, 0 ≤ f₀ ω := by
+      intro ⟨w, H, rs, sr, ch⟩; dsimp only [f₀, g₀]
+      generalize (A.interact _ _).run _ _ = result
+      cases result with
+      | none => exact le_refl 0
+      | some _ => exact boolToReal_nonneg _
+    have h_f0_le : ∀ ω : Ω, f₀ ω ≤ 1 := by
+      intro ⟨w, H, rs, sr, ch⟩; dsimp only [f₀, g₀]
+      generalize (A.interact _ _).run _ _ = result
+      cases result with
+      | none => norm_num
+      | some _ => exact boolToReal_le_one _
+    have h_f1_nn : ∀ ω : Ω, 0 ≤ f₁ ω := by
+      intro ⟨w, H, rs, sr, ch⟩; dsimp only [f₁, g₁]
+      cases simGame_run_stmt P Msg hvzk A n (keyOf n w) sr ch with
+      | none => exact le_refl 0
+      | some _ => norm_num
+    have h_f1_le : ∀ ω : Ω, f₁ ω ≤ 1 := by
+      intro ⟨w, H, rs, sr, ch⟩; dsimp only [f₁, g₁]
+      cases simGame_run_stmt P Msg hvzk A n (keyOf n w) sr ch with
+      | none => norm_num
+      | some _ => norm_num
+    -- ── Games agree on ¬Bad ──
+    -- When all commitments are distinct, each H evaluation at a signing
+    -- query hits a fresh point, so H gives independent uniform challenges.
+    -- By sim_distribution, the real transcript distribution matches the
+    -- simulated one for uniform challenges, so the game outcomes agree.
+    have h_agree : ∀ ω : Ω, ¬bad ω → f₀ ω = f₁ ω := by
+      sorry
+    -- ── Apply game hop lemma ──
+    have h_hop := uniformExpect_game_hop Ω f₀ f₁ bad h_agree
+      h_f0_nn h_f0_le h_f1_nn h_f1_le
+    -- ── Bound Pr[Bad] ≤ q²/|T| ──
+    have h_bad_bound : uniformExpect Ω (fun ω => if bad ω then (1 : ℝ) else 0) ≤
+        (q : ℝ) ^ 2 / Fintype.card (P.Commitment n) := by
+      -- bad(w, _, rs, _, _) depends only on (w, rs).
+      -- Marginalize Ω → W × RS × CH → W × (E_{RS}[...]) → bound.
+      -- Helper: indicator function for gBad (curried for marginalization)
+      let badInd : R.Witness n → (Fin q → P.ProverRandomness n) →
+          (Fin q → P.Challenge n) → ℝ :=
+        fun w rs _ch => if gBad w rs then (1 : ℝ) else 0
+      calc uniformExpect Ω (fun ω => if bad ω then (1 : ℝ) else 0)
+        -- Step 1: drop H and SR via uniformExpect_prod5_ignore_bd
+        = uniformExpect (R.Witness n × (Fin q → P.ProverRandomness n) ×
+            (Fin q → P.Challenge n))
+            (fun r => badInd r.1 r.2.1 r.2.2) :=
+          uniformExpect_prod5_ignore_bd badInd
+        -- Step 2: Fubini to E_W[E_{RS×CH}[...]]
+        _ = uniformExpect (R.Witness n) (fun w =>
+            uniformExpect ((Fin q → P.ProverRandomness n) × (Fin q → P.Challenge n))
+              (fun p => badInd w p.1 p.2)) := by rw [uniformExpect_prod]
+        -- Step 3: drop CH via uniformExpect_prod_ignore_snd
+        _ = uniformExpect (R.Witness n) (fun w =>
+            uniformExpect (Fin q → P.ProverRandomness n)
+              (fun rs => if gBad w rs then (1 : ℝ) else 0)) := by
+          congr 1; ext w
+          exact uniformExpect_prod_ignore_snd
+            (fun rs => if gBad w rs then (1 : ℝ) else 0)
+        -- Step 4: commitmentUniform_prod converts commit-distribution to uniform
+        _ = uniformExpect (R.Witness n) (fun w =>
+            uniformExpect (Fin q → P.Commitment n)
+              (fun ts => if ∃ (i j : Fin q), i < j ∧ ts i = ts j
+              then (1 : ℝ) else 0)) := by
+          congr 1; ext w
+          exact P.commitmentUniform_prod n q w (keyOf n w) (keyOf_valid n w)
+            (fun ts => if ∃ (i j : Fin q), i < j ∧ ts i = ts j
+              then (1 : ℝ) else 0)
+        -- Step 5: birthday_bound gives q²/|T| pointwise
+        _ ≤ uniformExpect (R.Witness n)
+            (fun _ => (q : ℝ) ^ 2 / Fintype.card (P.Commitment n)) :=
+          uniformExpect_mono _ (fun _ => birthday_bound q)
+        -- Step 6: constant expectation
+        _ = (q : ℝ) ^ 2 / Fintype.card (P.Commitment n) :=
+          uniformExpect_const _ _
+    -- ── Chain inequalities ──
+    rw [h_adv0, h_adv1]
+    exact le_trans h_hop h_bad_bound
+
+/-- The oracle used in `simGame_run_stmt`, extracted for reasoning. -/
+private noncomputable def simOracle {R : EffectiveRelation}
+    (P : SigmaProtocol R) (Msg : ℕ → Type)
+    (hvzk : P.SpecialHVZK) (n : ℕ) (q : ℕ)
+    (y : R.Statement n) (sr : Fin q → hvzk.SimRandomness n)
+    (ch : Fin q → P.Challenge n) :
+    Fin q → (Msg n ⊕ (Msg n × P.Commitment n)) →
+      ((P.Commitment n × P.Response n) ⊕ P.Challenge n) :=
+  fun i qry => match qry with
+  | .inl _ =>
+    let (t, z) := hvzk.simulate n y (ch i) (sr i)
+    .inl (t, z)
+  | .inr _ => .inr (ch i)
+
+/-- When `simGame_run_stmt` succeeds, extract the underlying `run` result
+and key properties relating the fork index to the query log. -/
+private lemma simGame_run_stmt_data {R : EffectiveRelation}
+    (P : SigmaProtocol R) (Msg : ℕ → Type) [∀ n, DecidableEq (Msg n)]
+    (hvzk : P.SpecialHVZK) (A : ROM_EUF_CMA_Adversary P Msg) (n : ℕ)
+    (y : R.Statement n) (sr : Fin (A.numQueries n) → hvzk.SimRandomness n)
+    (ch : Fin (A.numQueries n) → P.Challenge n)
+    {j : Fin (A.numQueries n)} {mf : Msg n} {tf : P.Commitment n}
+    {zf : P.Response n}
+    (h : simGame_run_stmt P Msg hvzk A n y sr ch = some (j, (mf, tf, zf))) :
+    ∃ queries,
+      (A.interact n y).run (A.numQueries n)
+        (simOracle P Msg hvzk n (A.numQueries n) y sr ch) =
+        some (queries, (mf, tf, zf)) ∧
+      j.val ≤ queries.length ∧
+      (∀ (hlt : j.val < queries.length), queries[j.val] = .inr (mf, tf)) := by
+  letI := P.commitmentDecEq n
+  -- simGame_run_stmt is definitionally a match on run simOracle
+  have h_def : simGame_run_stmt P Msg hvzk A n y sr ch =
+      match (A.interact n y).run (A.numQueries n)
+        (simOracle P Msg hvzk n (A.numQueries n) y sr ch) with
+      | none => none
+      | some (queries, mf', tf', zf') =>
+        let jv := queries.findIdx (fun x => decide (x = .inr (mf', tf')))
+        if hj : jv < A.numQueries n then
+          let signMsgs := queries.filterMap (fun q => match q with
+            | .inl m => some m | .inr _ => none)
+          if P.verify n y tf' (ch ⟨jv, hj⟩) zf' && !(signMsgs.contains mf') then
+            some (⟨jv, hj⟩, (mf', tf', zf'))
+          else none
+        else none := by rfl
+  rw [h_def] at h
+  -- Case split on the run result
+  generalize h_run : (A.interact n y).run (A.numQueries n)
+    (simOracle P Msg hvzk n (A.numQueries n) y sr ch) = result at h
+  rcases result with _ | ⟨queries, mf', tf', zf'⟩
+  · exact absurd h nofun
+  · -- Reduce the match on the constructor in h
+    dsimp only [] at h
+    split at h
+    · split at h
+      · -- Success: extract via injection
+        have hinj := Option.some.inj h
+        have hj_eq := (Prod.mk.inj hinj).1
+        have hrest := (Prod.mk.inj hinj).2
+        have hmf : mf' = mf := (Prod.mk.inj hrest).1
+        have hrest2 := (Prod.mk.inj hrest).2
+        have htf_eq : tf' = tf := (Prod.mk.inj hrest2).1
+        have hzf : zf' = zf := (Prod.mk.inj hrest2).2
+        refine ⟨queries, ?_, ?_, ?_⟩
+        · -- run equation
+          rw [← hmf, ← htf_eq, ← hzf]
+        · -- j.val ≤ queries.length from findIdx_le_length
+          have hj_val : queries.findIdx (fun x => decide (x = .inr (mf', tf'))) = j.val :=
+            congrArg Fin.val hj_eq
+          rw [← hj_val]; exact List.findIdx_le_length
+        · -- queries[j.val] = .inr (mf, tf)
+          intro hlt
+          rw [← hmf, ← htf_eq]
+          have hj_val : queries.findIdx (fun x => decide (x = .inr (mf', tf'))) = j.val :=
+            congrArg Fin.val hj_eq
+          have hlt' : queries.findIdx (fun x => decide (x = .inr (mf', tf'))) < queries.length :=
+            hj_val ▸ hlt
+          have h_beq := List.findIdx_getElem (w := hlt')
+          -- h_beq : decide (queries[findIdx ...] = .inr (mf', tf')) = true
+          -- Use of_decide_eq_true to get propositional equality
+          have h_at := of_decide_eq_true h_beq
+          -- Transfer from findIdx position to j.val
+          simp only [hj_val] at h_at; exact h_at
+      · exact absurd h nofun
+    · exact absurd h nofun
 
 /-- When `simGame_run_stmt` succeeds, the verification check passed. -/
 private lemma simGame_run_stmt_verify {R : EffectiveRelation}
@@ -236,7 +520,62 @@ private theorem forkExtraction_le_advR {R : EffectiveRelation}
       if_neg (Nat.lt_irrefl _)
     rw [h_ch_at_j] at hv₂
     -- Show tf₁ = tf₂ using deterministic prefix, then apply soundness
-    have htf : tf₁ = tf₂ := by sorry
+    have htf : tf₁ = tf₂ := by
+      -- Extract run results from both successful simGame_run_stmt calls
+      obtain ⟨queries₁, hrun₁, hle₁, hget₁⟩ :=
+        simGame_run_stmt_data P Msg hvzk A n y sr ch₁ h₁
+      set ch_fork : Fin (A.numQueries n) → P.Challenge n :=
+        fun i => if i.val < j.val then ch₁ i else ch₂ i
+      obtain ⟨queries₂, hrun₂, hle₂, hget₂⟩ :=
+        simGame_run_stmt_data P Msg hvzk A n y sr ch_fork h₂
+      -- The oracles agree on all indices < j.val
+      have h_oracle_agree : ∀ (i : Fin (A.numQueries n)), i.val < j.val →
+          simOracle P Msg hvzk n (A.numQueries n) y sr ch₁ i =
+          simOracle P Msg hvzk n (A.numQueries n) y sr ch_fork i := by
+        intro i hi
+        have h_ch_eq : ch_fork i = ch₁ i := if_pos hi
+        ext qry; unfold simOracle; rw [h_ch_eq]
+      -- Case split: j.val < queries₁.length or j.val ≥ queries₁.length
+      by_cases hjlt : j.val < queries₁.length
+      · -- Case A: j.val < queries₁.length
+        -- By prefix length preservation, j.val < queries₂.length
+        have hjlt₂ : j.val < queries₂.length :=
+          OracleInteraction.run_prefix_implies_length
+            (A.interact n y) (A.numQueries n)
+            (simOracle P Msg hvzk n (A.numQueries n) y sr ch₁)
+            (simOracle P Msg hvzk n (A.numQueries n) y sr ch_fork)
+            j.val h_oracle_agree hrun₁ hrun₂ hjlt
+        -- The j-th queries are equal by deterministic prefix
+        have hq_eq : queries₁[j.val] = queries₂[j.val] :=
+          OracleInteraction.run_prefix_query_eq
+            (A.interact n y) (A.numQueries n)
+            (simOracle P Msg hvzk n (A.numQueries n) y sr ch₁)
+            (simOracle P Msg hvzk n (A.numQueries n) y sr ch_fork)
+            j.val h_oracle_agree hrun₁ hrun₂ hjlt hjlt₂
+        -- The j-th query in each run is .inr (mf, tf)
+        have hq₁ : queries₁[j.val] = .inr (mf₁, tf₁) := hget₁ hjlt
+        have hq₂ : queries₂[j.val] = .inr (mf₂, tf₂) := hget₂ hjlt₂
+        -- Combine: .inr (mf₁, tf₁) = .inr (mf₂, tf₂)
+        have := hq₁.symm.trans (hq_eq.trans hq₂)
+        exact (Prod.mk.inj (Sum.inr.inj this)).2
+      · -- Case B: j.val ≥ queries₁.length (= queries₁.length by findIdx_le_length)
+        -- All oracle indices < queries₁.length are < j.val
+        have h_agree_all : ∀ (i : Fin (A.numQueries n)),
+            i.val < queries₁.length →
+            simOracle P Msg hvzk n (A.numQueries n) y sr ch₁ i =
+            simOracle P Msg hvzk n (A.numQueries n) y sr ch_fork i := by
+          intro i hi
+          exact h_oracle_agree i (lt_of_lt_of_le hi (Nat.le_of_not_lt hjlt))
+        -- By run_det_prefix, both runs produce the same result
+        have hrun₂' :=
+          OracleInteraction.run_det_prefix
+            (A.interact n y) (A.numQueries n)
+            (simOracle P Msg hvzk n (A.numQueries n) y sr ch₁)
+            (simOracle P Msg hvzk n (A.numQueries n) y sr ch_fork)
+            hrun₁ h_agree_all
+        -- The second run result must match
+        rw [hrun₂'] at hrun₂
+        exact (Prod.mk.inj (Prod.mk.inj (Prod.mk.inj (Option.some.inj hrun₂)).2).2).1
     rw [← htf] at hv₂
     exact ss.soundness n y tf₁ (ch₁ j) zf₁ (ch₂ j) zf₂ h_neq hv₁ hv₂
   -- Define find_n using Classical.epsilon: for each statement y, pick any
