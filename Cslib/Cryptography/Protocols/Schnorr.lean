@@ -93,7 +93,6 @@ noncomputable def schnorr_commitUniform (C : CyclicGroupFamily) (n : ℕ)
     -- hrel : C.gpow n w = y (the DL relation)
     change C.gpow n w = y at hrel
     rw [C.gpow_add, ← hrel, C.gpow_mul' n w c]
-  commitmentUniform n _w _y _hw f := schnorr_commitUniform C n f
 
 /-- **Special soundness** for the Schnorr protocol: from two accepting
 conversations `(u_t, c, α_z)` and `(u_t, c', α_z')` with `c ≠ c'`,
@@ -193,11 +192,19 @@ noncomputable def schnorrSpecialHVZK (C : CyclicGroupFamily) :
           C.gpow_add, C.gpow_mul' n w c, hrel, mul_inv_cancel_right]
       · -- α_t + w * c = σ(α_t)
         rfl)
-  simCommitmentUniform n y c f :=
-    Cslib.Probability.uniformExpect_congr
-      ((Equiv.ofBijective (C.gpow n)
-        ⟨C.gpow_injective n, C.gpow_surjective n⟩).trans
-       (Equiv.mulRight (y ^ (ZMod.val c))⁻¹)) f
+
+/-- Schnorr has `1/|G|`-unpredictable commitments (since `g^r` is uniform). -/
+theorem schnorr_unpredictable (C : CyclicGroupFamily) :
+    (SchnorrProtocol C).UnpredictableCommitments
+      (fun n => 1 / Fintype.card (C.Group n)) := by
+  intro n _w _y t₀ _hw
+  have h := schnorr_commitUniform C n (fun t => if t = t₀ then 1 else 0)
+  simp only [] at h
+  rw [h]
+  simp only [Cslib.Probability.uniformExpect_eq, Finset.sum_ite_eq',
+    Finset.mem_univ, ite_true]
+  ring_nf
+  exact le_refl _
 
 /-- The **Schnorr signature scheme**: the Fiat-Shamir transform
 applied to the Schnorr protocol.
