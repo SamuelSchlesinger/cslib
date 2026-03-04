@@ -81,6 +81,73 @@ structure ROM_EUF_CMA_Adversary {R : EffectiveRelation}
       ((P.Commitment n × P.Response n) ⊕ P.Challenge n)
       (Msg n × P.Commitment n × P.Response n)
 
+/-- The **stateful oracle** for the ROM EUF-CMA game.
+
+The oracle handles two kinds of queries via a sum type:
+
+- **Signing queries** (`Sum.inl m`): commit using `rs i`, look up or lazily
+  sample the challenge for `(m, t)`, then respond — returning the signature
+  `(t, z)` and updating the association list.
+- **Hash queries** (`Sum.inr (m, t)`): look up or lazily sample the challenge
+  for `(m, t)`, returning it and updating the association list. -/
+noncomputable def romCmaOracle {R : EffectiveRelation}
+    (P : SigmaProtocol R) (Msg : ℕ → Type) [∀ n, DecidableEq (Msg n)]
+    (n : ℕ) (w : R.Witness n) (y : R.Statement n)
+    (rs : Fin q → P.ProverRandomness n)
+    (Hs : Fin q → (Msg n × P.Commitment n → P.Challenge n))
+    [DecidableEq (P.Commitment n)] :
+    Fin q →
+    List ((Msg n × P.Commitment n) × P.Challenge n) →
+    (Msg n ⊕ (Msg n × P.Commitment n)) →
+    ((P.Commitment n × P.Response n) ⊕ P.Challenge n) ×
+      List ((Msg n × P.Commitment n) × P.Challenge n) :=
+  fun i map qry =>
+    match qry with
+    | .inl m =>
+      let t := P.commit n w y (rs i)
+      match assocLookup (m, t) map with
+      | some c => (.inl (t, P.respond n w y (rs i) c), map)
+      | none =>
+        let c := Hs i (m, t)
+        (.inl (t, P.respond n w y (rs i) c), ((m, t), c) :: map)
+    | .inr (m, t) =>
+      match assocLookup (m, t) map with
+      | some c => (.inr c, map)
+      | none =>
+        let c := Hs i (m, t)
+        (.inr c, ((m, t), c) :: map)
+
+/-- The **win condition** for the ROM EUF-CMA game.
+
+Given the result of running the adversary's oracle interaction, returns `1`
+if the adversary wins and `0` otherwise. The adversary wins when all three
+conditions hold:
+
+1. **Forgery verifies**: `P.verify y t★ c z★ = true` where `c` is the
+   challenge recorded for `(m★, t★)` in the hash table.
+2. **Message is fresh**: `m★` was not previously submitted as a signing query.
+3. **Explicit hash query**: `(m★, t★)` appears among the adversary's queries
+   as an explicit hash query (`Sum.inr (m★, t★)`). -/
+noncomputable def romCmaWinCondition {R : EffectiveRelation}
+    (P : SigmaProtocol R) (Msg : ℕ → Type) [∀ n, DecidableEq (Msg n)]
+    (n : ℕ) (q : ℕ) (y : R.Statement n)
+    [DecidableEq (P.Commitment n)] :
+    Option (List (Msg n ⊕ (Msg n × P.Commitment n)) ×
+      (Msg n × P.Commitment n × P.Response n) ×
+      List ((Msg n × P.Commitment n) × P.Challenge n)) → ℝ
+  | none => 0
+  | some (queries, (mf, tf, zf), finalMap) =>
+    let j := queries.findIdx (fun x => decide (x = .inr (mf, tf)))
+    if _hj : j < q then
+      let signMsgs := queries.filterMap (fun q => match q with
+        | .inl m => some m | .inr _ => none)
+      match assocLookup (mf, tf) finalMap with
+      | some c =>
+        boolToReal (P.verify n y tf c zf && !(signMsgs.contains mf))
+      | none => 0
+    else
+      0
+
 /-- The **ROM EUF-CMA security game** for a Fiat-Shamir signature scheme.
 
 The game (proof-friendly ROM-EUF-CMA variant):
@@ -109,39 +176,8 @@ noncomputable def ROM_EUF_CMA_Game {R : EffectiveRelation}
       (fun ⟨⟨w, rs⟩, Hs⟩ =>
         let y := keyOf n w
         letI := P.commitmentDecEq n
-        let oracle : Fin q →
-            List ((Msg n × P.Commitment n) × P.Challenge n) →
-            (Msg n ⊕ (Msg n × P.Commitment n)) →
-            (((P.Commitment n × P.Response n) ⊕ P.Challenge n) ×
-              List ((Msg n × P.Commitment n) × P.Challenge n)) :=
-          fun i map qry =>
-            match qry with
-            | .inl m =>
-              let t := P.commit n w y (rs i)
-              match assocLookup (m, t) map with
-              | some c => (.inl (t, P.respond n w y (rs i) c), map)
-              | none =>
-                let c := Hs i (m, t)
-                (.inl (t, P.respond n w y (rs i) c), ((m, t), c) :: map)
-            | .inr (m, t) =>
-              match assocLookup (m, t) map with
-              | some c => (.inr c, map)
-              | none =>
-                let c := Hs i (m, t)
-                (.inr c, ((m, t), c) :: map)
-        match (A.interact n y).runWithState q oracle [] with
-        | none => 0
-        | some (queries, (mf, tf, zf), finalMap) =>
-          let j := queries.findIdx (fun x => decide (x = .inr (mf, tf)))
-          if _hj : j < q then
-            let signMsgs := queries.filterMap (fun q => match q with
-              | .inl m => some m | .inr _ => none)
-            match assocLookup (mf, tf) finalMap with
-            | some c =>
-              boolToReal (P.verify n y tf c zf && !(signMsgs.contains mf))
-            | none => 0
-          else
-            0)
+        romCmaWinCondition P Msg n q y
+          ((A.interact n y).runWithState q (romCmaOracle P Msg n w y rs Hs) []))
 
 /-- A **relation solver** is an adversary that attempts to find a
 witness given a statement. -/

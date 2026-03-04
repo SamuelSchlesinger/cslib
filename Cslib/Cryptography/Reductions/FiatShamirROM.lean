@@ -2204,9 +2204,10 @@ private theorem rom_eq_lazy_rom {R : EffectiveRelation}
     (A : ROM_EUF_CMA_Adversary P Msg) (n : ℕ) :
     (ROM_EUF_CMA_Game P Msg keyOf).advantage A n =
     lazyRom_advantage P Msg keyOf A n := by
-  simp only [ROM_EUF_CMA_Game, List.contains_eq_mem, List.mem_filterMap,
+  simp only [ROM_EUF_CMA_Game, romCmaWinCondition,
+    List.contains_eq_mem, List.mem_filterMap,
     Sum.exists, Option.some.injEq, exists_eq_right, reduceCtorEq, and_false,
-    exists_const, or_false, dite_eq_ite, lazyRom_advantage, forkAcceptProb,
+    exists_const, or_false, lazyRom_advantage, forkAcceptProb,
     lazyRom_run, lazyRom_run_stmt, Bool.and_eq_true, Bool.not_eq_eq_eq_not,
     Bool.not_true, decide_eq_false_iff_not]
   conv_lhs => rw [uniformExpect_prod]
@@ -3008,7 +3009,7 @@ theorem fiatShamir_ROM_secure {R : EffectiveRelation}
   -- Transfer to advantage via Map-based chain
   exact h_bound.mono ⟨0, fun n _ => by
     have h_adv_nn : 0 ≤ (ROM_EUF_CMA_Game P Msg keyOf).advantage A n := by
-      unfold ROM_EUF_CMA_Game
+      unfold ROM_EUF_CMA_Game romCmaWinCondition romCmaOracle
       apply uniformExpect_nonneg
       intro ⟨⟨_, _⟩, _⟩
       dsimp only
