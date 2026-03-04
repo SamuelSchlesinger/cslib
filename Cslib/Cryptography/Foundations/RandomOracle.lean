@@ -14,9 +14,9 @@ public import Cslib.Cryptography.Foundations.OracleInteraction
 /-!
 # Random Oracle Model for Fiat-Shamir Signatures
 
-This file defines the **ROM (Random Oracle Model) EUF-CMA** security
-game for Fiat-Shamir signature schemes and a generic **relation hardness
-game** for the underlying relation.
+This file defines a **ROM (Random Oracle Model) EUF-CMA** game for
+Fiat-Shamir signature schemes, together with a generic **relation
+hardness game** for the underlying relation.
 
 ## Main Definitions
 
@@ -32,8 +32,17 @@ The two-oracle adversary model uses sum types for queries:
 - `Sum.inl m` — signing query for message `m`
 - `Sum.inr (m, t)` — hash query for `(m, t)`
 
-The hash function `H` is sampled uniformly as part of the game coins.
-Signing is performed honestly using `H`.
+The ROM is implemented via lazy sampling with an association list:
+fresh `(m, t)` points receive a fresh random challenge and repeated
+points are answered consistently.
+
+This formalization follows the proof-friendly setup used in
+Boneh-Shoup §19.2.2 / §19.6: we require the forgery point `(m★, t★)` to
+appear among the adversary's explicit hash queries (the standard
+Theorem 19.7 "explicit query" simplification).
+
+We also use one total query bound `q`; in the book notation, this
+corresponds to a combined budget derived from `Qs` and `Qro`.
 
 ## References
 
@@ -74,14 +83,17 @@ structure ROM_EUF_CMA_Adversary {R : EffectiveRelation}
 
 /-- The **ROM EUF-CMA security game** for a Fiat-Shamir signature scheme.
 
-The game:
+The game (proof-friendly ROM-EUF-CMA variant):
 1. Samples a witness `w` uniformly
-2. Samples a random oracle `H : Msg × Commitment → Challenge` uniformly
+2. Samples lazy-sampling coins for random-oracle replies
 3. Samples signing randomness `rs : Fin q → ProverRandomness`
 4. Gives the adversary the statement `y = keyOf w`
-5. Answers signing queries using honest Fiat-Shamir signing with `H`
-6. Answers hash queries by evaluating `H`
-7. Checks if the forgery verifies and the message is fresh -/
+5. Answers signing queries using honest Fiat-Shamir signing
+6. Answers hash queries consistently via lazy sampling
+7. Accepts only if:
+   - the forgery verifies,
+   - the message is fresh (not signed before), and
+   - `(m★, t★)` was explicitly hash-queried -/
 noncomputable def ROM_EUF_CMA_Game {R : EffectiveRelation}
     (P : SigmaProtocol R) (Msg : ℕ → Type)
     [∀ n, DecidableEq (Msg n)]
@@ -139,7 +151,10 @@ structure RelationSolver (R : EffectiveRelation) where
 
 /-- The **relation hardness game**: the challenger samples a witness `w`
 uniformly, computes the statement `y = keyOf w`, and gives `y` to the
-solver. The solver wins if it outputs a valid witness for `y`. -/
+solver. The solver wins if it outputs a valid witness for `y`.
+
+This is the natural-keygen specialization of Boneh-Shoup Attack
+Game 19.2 where key generation is `w ←$ Witness; pk := keyOf w`. -/
 noncomputable def RelationGame (R : EffectiveRelation)
     (keyOf : ∀ n, R.Witness n → R.Statement n)
     [∀ n, Fintype (R.Witness n)] [∀ n, Nonempty (R.Witness n)]
