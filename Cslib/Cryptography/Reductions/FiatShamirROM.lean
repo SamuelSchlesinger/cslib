@@ -30,26 +30,70 @@ scheme is **EUF-CMA secure** in the **random oracle model**.
 
 ## Proof Architecture (Boneh-Shoup §19.6)
 
-**Game 0** = ROM EUF-CMA game (real signing, random oracle H).
+The reduction proceeds through a chain of game hops:
 
-**MapGame1_HVZK** = Map-based game with HVZK simulator signing and
-hash consistency maintained via an association list. The signing
-oracle always uses fresh per-query challenges `ch_i` (ignoring the
-Map), while the hash oracle checks the Map for consistency.
+### Game-hop chain: ROM → LazyROM → MapGame_Real → MapGame1_HVZK
 
-**Game hop**: `ROM.adv ≤ MapGame1_HVZK.adv + q² · δ`
-(`rom_eq_mapGame1_hvzk_bound`, combines lazy sampling,
-collision bound, and HVZK switch).
+1. **ROM → LazyROM** (`rom_eq_lazy_rom`): The real ROM game samples
+   `Fin q → (Msg × Commitment → Challenge)` (per-step random functions).
+   By `uniformExpect_eval_at_point`, evaluating a random function at a
+   point is equivalent to sampling a uniform value directly. This
+   gives exact equality with the lazy-sampling game that uses
+   `Fin q → Challenge` as its randomness.
 
-**Forking step**: In MapGame1_HVZK, the signing oracle doesn't use
-the witness. Fork the adversary at the hash query for the forgery.
-Two accepting transcripts with different challenges yield a witness
-via special soundness. The forking lemma bounds the extraction
-probability.
+2. **LazyROM → MapGame_Real** (`lazy_le_mapGame_real`): The lazy ROM
+   oracle checks the association-list map before using its fresh
+   challenge `ch_i` at signing steps. MapGame_Real always uses `ch_i`
+   and inserts into the map without checking. The two games differ
+   only when a signing query hits a key already in the map, which
+   requires a commitment collision. By the union bound over
+   `≤ q²` pairs, the gap is at most `q² · δ`
+   (`lazyCommitReuse_bound`, via `lazyPairCommitReuse_pair_bound`).
 
-The final bound inverts the forking lemma:
-`acc²/q ≤ frk + acc/|Ch|` implies `acc ≤ √(q · frk + q/|Ch|)`,
-and `frk ≤ Adv_R(B)` by special soundness.
+3. **MapGame_Real → MapGame1_HVZK** (`mapGame_real_eq_mapGame1_hvzk`):
+   The real prover `(commit, respond)` and the HVZK simulator produce
+   the same marginal distribution at each step (by `sim_distribution`).
+   The `runWithState_uniformExpect_oracle_eq` lemma lifts this per-step
+   equivalence to the full interaction, giving exact equality.
+
+### Combining the game hops
+
+`rom_eq_mapGame1_hvzk_bound` assembles the chain:
+  `ROM.adv ≤ MapGame1_HVZK.adv + q² · δ`
+
+### Forking step: MapGame1_HVZK → relation advantage
+
+In MapGame1_HVZK, the signing oracle uses the HVZK simulator and
+does **not** use the witness. The forking lemma (`forking_lemma`)
+applied to the adversary's interaction yields the quadratic bound:
+  `acc²/q ≤ frk + acc/|Ch|`
+
+When forking succeeds, two accepting transcripts with different
+challenges at the same forgery index yield a witness via special
+soundness (`forkExtraction_le_advR_map`). Thus `frk ≤ Adv_R(B)`.
+
+Inverting the quadratic gives:
+  `acc ≤ √(q · Adv_R(B) + q/|Ch|)`
+
+This is `mapGame1_hvzk_forking_bound`.
+
+### Infrastructure lemmas
+
+The file also develops infrastructure for reasoning about stateful
+oracle interactions:
+
+* `run_uniformExpect_oracle_eq` / `runWithState_uniformExpect_oracle_eq`:
+  per-step marginal equivalence lifts to full interaction expected values
+* `queryAtWithState` / `stateBeforeWithState`: access the `k`-th query
+  and the state just before it, enabling prefix-independence arguments
+* `queryAtWithState_eq_of_prefix`: changing the oracle at indices `≥ k`
+  does not affect the `k`-th query
+* `mapGameRealOracle_finalMap_lookup`: traces the forgery key through
+  the association list to establish which challenge the final map binds
+* `lazy_run_stmt_eq_mapGame_real_run_stmt_of_no_reuse`: conditioned on
+  no commitment reuse, the lazy and MapGame_Real runs are identical
+* `runWithState_eq_of_oracle_agree_on_trace`: two oracles that agree
+  on the actual trace produce the same `runWithState` result
 
 ## References
 

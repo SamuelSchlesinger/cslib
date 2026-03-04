@@ -12,37 +12,54 @@ public import Cslib.Cryptography.Foundations.OracleInteraction
 @[expose] public section
 
 /-!
-# Random Oracle Model for Fiat-Shamir Signatures
+# ROM EUF-CMA Security Games for Fiat-Shamir Signatures
 
-This file defines a **ROM (Random Oracle Model) EUF-CMA** game for
-Fiat-Shamir signature schemes, together with a generic **relation
-hardness game** for the underlying relation.
+This file defines the **security games** used to state and prove the
+ROM (Random Oracle Model) security of Fiat-Shamir signature schemes
+derived from Sigma protocols. It provides the game definitions; the
+security reduction is in `Cslib.Cryptography.Reductions.FiatShamirROM`.
 
 ## Main Definitions
 
-* `ROM_EUF_CMA_Adversary` — an adversary with oracle access to both
-  a signing oracle and a hash oracle (modeled via sum-type queries)
-* `ROM_EUF_CMA_Game` — the EUF-CMA game in the random oracle model
-* `RelationSolver` — an adversary trying to find a witness for a relation
-* `RelationGame` — the hardness game for a relation
+* `assocLookup` — association-list lookup, used for Map-based ROM
+  simulations throughout the game-hop chain
+* `ROM_EUF_CMA_Adversary` — an adversary that adaptively queries a
+  signing oracle and a hash oracle (modeled via a sum-type
+  `OracleInteraction`), then outputs a forgery `(m★, t★, z★)`
+* `romCmaOracle` — the stateful oracle that handles signing and hash
+  queries in the real ROM game, using lazy sampling with an association
+  list for consistency
+* `romCmaWinCondition` — the win-condition predicate: the forgery
+  verifies, the message is fresh, and `(m★, t★)` was explicitly
+  hash-queried
+* `ROM_EUF_CMA_Game` — the full ROM EUF-CMA security game, as a
+  `SecurityGame` instance
+* `RelationSolver` — an adversary that, given a statement, attempts to
+  find a valid witness
+* `RelationGame` — the relation-hardness game (natural-keygen variant):
+  sample `w` uniformly, give `keyOf w` to the solver, check the output
 
 ## Design Notes
 
-The two-oracle adversary model uses sum types for queries:
-- `Sum.inl m` — signing query for message `m`
-- `Sum.inr (m, t)` — hash query for `(m, t)`
+**Two-oracle model via sum types.** The adversary issues queries of type
+`Msg ⊕ (Msg × Commitment)`:
+- `Sum.inl m` — signing query for message `m`, answered with `(t, z)`
+- `Sum.inr (m, t)` — hash query for `(m, t)`, answered with challenge `c`
 
-The ROM is implemented via lazy sampling with an association list:
-fresh `(m, t)` points receive a fresh random challenge and repeated
-points are answered consistently.
+**Lazy-sampling ROM.** The random oracle is implemented by threading an
+association list `List ((Msg × Commitment) × Challenge)` as state: fresh
+keys receive a uniformly sampled challenge; repeated keys are answered
+consistently from the list.
 
-This formalization follows the proof-friendly setup used in
-Boneh-Shoup §19.2.2 / §19.6: we require the forgery point `(m★, t★)` to
-appear among the adversary's explicit hash queries (the standard
-Theorem 19.7 "explicit query" simplification).
+**Explicit-query requirement.** Following the proof-friendly setup in
+Boneh-Shoup §19.2.2 / §19.6 (Theorem 19.7), the win condition requires
+`(m★, t★)` to appear among the adversary's explicit hash queries
+(`Sum.inr`). This is a standard simplification that loses nothing
+asymptotically.
 
-We also use one total query bound `q`; in the book notation, this
-corresponds to a combined budget derived from `Qs` and `Qro`.
+**Single query bound.** We use one total query count `q = A.numQueries n`
+covering both hash and signing queries. In the book notation this
+corresponds to the combined budget `Qs + Qro`.
 
 ## References
 
