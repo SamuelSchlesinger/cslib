@@ -176,7 +176,7 @@ private theorem perCoinsFork_eq_sum
   dsimp only []
   rcases hrun : run c h₁ with _ | ⟨j, a⟩
   · -- When first run fails: both sides are 0
-    simp [hrun]
+    simp
   · -- When first run gives (j, a): sum collapses to j₀ = j
     -- Simplify: j.val < j.val is false, so h_fork j = h₂ j
     simp only [show ¬ (j.val < j.val) from Nat.lt_irrefl _, ite_false]
@@ -267,7 +267,7 @@ private theorem collision_bound
 /-- Correlation bound: `E[1{first gives j} · 1{second gives j}] ≥ perIndexAcc(c,j)²`.
 Uses oracle table split + independence + Jensen. -/
 private theorem correlation_bound
-    {α : Type} {R : Type} [Fintype R] [Nonempty R] [DecidableEq R] {q : ℕ}
+    {α : Type} {R : Type} [Fintype R] [Nonempty R] {q : ℕ}
     (run : Coins → (Fin q → R) → Option (Fin q × α)) (c : Coins) (j : Fin q) :
     uniformExpect ((Fin q → R) × (Fin q → R)) (fun ⟨h₁, h₂⟩ =>
       (match run c h₁ with

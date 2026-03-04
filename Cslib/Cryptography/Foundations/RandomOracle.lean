@@ -43,6 +43,12 @@ Signing is performed honestly using `H`.
 
 open Cslib.Probability
 
+/-- Association-list lookup for map-style ROM simulations. -/
+noncomputable def assocLookup {α β : Type} [DecidableEq α]
+    (key : α) : List (α × β) → Option β
+  | [] => none
+  | (k, v) :: rest => if k = key then some v else assocLookup key rest
+
 /-- A **ROM EUF-CMA adversary** for a Fiat-Shamir signature scheme.
 
 The adversary receives the public key (statement) and adaptively
@@ -86,25 +92,44 @@ noncomputable def ROM_EUF_CMA_Game {R : EffectiveRelation}
   advantage A n :=
     let q := A.numQueries n
     uniformExpect
-      (R.Witness n × (Msg n × P.Commitment n → P.Challenge n)
-       × (Fin q → P.ProverRandomness n))
-      (fun ⟨w, H, rs⟩ =>
+      ((R.Witness n × (Fin q → P.ProverRandomness n)) ×
+        (Fin q → (Msg n × P.Commitment n → P.Challenge n)))
+      (fun ⟨⟨w, rs⟩, Hs⟩ =>
         let y := keyOf n w
+        letI := P.commitmentDecEq n
         let oracle : Fin q →
+            List ((Msg n × P.Commitment n) × P.Challenge n) →
             (Msg n ⊕ (Msg n × P.Commitment n)) →
-            ((P.Commitment n × P.Response n) ⊕ P.Challenge n) :=
-          fun i qry => match qry with
-          | .inl m =>
-            let t := P.commit n w y (rs i)
-            .inl (t, P.respond n w y (rs i) (H (m, t)))
-          | .inr mt => .inr (H mt)
-        match (A.interact n y).run q oracle with
+            (((P.Commitment n × P.Response n) ⊕ P.Challenge n) ×
+              List ((Msg n × P.Commitment n) × P.Challenge n)) :=
+          fun i map qry =>
+            match qry with
+            | .inl m =>
+              let t := P.commit n w y (rs i)
+              match assocLookup (m, t) map with
+              | some c => (.inl (t, P.respond n w y (rs i) c), map)
+              | none =>
+                let c := Hs i (m, t)
+                (.inl (t, P.respond n w y (rs i) c), ((m, t), c) :: map)
+            | .inr (m, t) =>
+              match assocLookup (m, t) map with
+              | some c => (.inr c, map)
+              | none =>
+                let c := Hs i (m, t)
+                (.inr c, ((m, t), c) :: map)
+        match (A.interact n y).runWithState q oracle [] with
         | none => 0
-        | some (queries, mf, tf, zf) =>
-          let signMsgs := queries.filterMap (fun q => match q with
-            | .inl m => some m | .inr _ => none)
-          boolToReal (P.verify n y tf (H (mf, tf)) zf &&
-            !(signMsgs.contains mf)))
+        | some (queries, (mf, tf, zf), finalMap) =>
+          let j := queries.findIdx (fun x => decide (x = .inr (mf, tf)))
+          if _hj : j < q then
+            let signMsgs := queries.filterMap (fun q => match q with
+              | .inl m => some m | .inr _ => none)
+            match assocLookup (mf, tf) finalMap with
+            | some c =>
+              boolToReal (P.verify n y tf c zf && !(signMsgs.contains mf))
+            | none => 0
+          else
+            0)
 
 /-- A **relation solver** is an adversary that attempts to find a
 witness given a statement. -/
