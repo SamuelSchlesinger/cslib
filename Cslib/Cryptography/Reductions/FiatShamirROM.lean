@@ -1511,35 +1511,6 @@ private axiom lazy_run_stmt_eq_mapGame_real_run_stmt_of_no_reuse {R : EffectiveR
     lazyRom_run_stmt P Msg A n w y rs ch =
     mapGame_real_run_stmt P Msg A n w y rs ch
 
-/-- Bridge from the unfolded `uniformExpect` inequality back to the
-high-level game-advantage statement. -/
-private axiom lazy_le_mapGame_real_of_unfolded {R : EffectiveRelation}
-    (P : SigmaProtocol R) (Msg : ℕ → Type)
-    [∀ n, DecidableEq (Msg n)]
-    [∀ n, Fintype (R.Witness n)] [∀ n, Nonempty (R.Witness n)]
-    (keyOf : ∀ n, R.Witness n → R.Statement n)
-    (A : ROM_EUF_CMA_Adversary P Msg) (n : ℕ) (δ : ℕ → ℝ) :
-    ((let q := A.numQueries n;
-      uniformExpect
-        ((R.Witness n × (Fin q → P.ProverRandomness n)) ×
-          (Fin q → P.Challenge n))
-        (fun x =>
-          match lazyRom_run_stmt P Msg A n x.1.1 (keyOf n x.1.1) x.1.2 x.2 with
-          | none => 0
-          | some _ => 1)) ≤
-      (let q := A.numQueries n;
-        uniformExpect
-          ((R.Witness n × (Fin q → P.ProverRandomness n)) ×
-            (Fin q → P.Challenge n))
-          (fun x =>
-            match mapGame_real_run_stmt P Msg A n x.1.1 (keyOf n x.1.1) x.1.2 x.2 with
-            | none => 0
-            | some _ => 1)) +
-      (A.numQueries n : ℝ) ^ 2 * δ n) →
-    lazyRom_advantage P Msg keyOf A n ≤
-      mapGame_real_advantage P Msg keyOf A n +
-      (A.numQueries n : ℝ) ^ 2 * δ n
-
 /-- `uniformExpect` does not depend on the particular `Fintype`/`Nonempty`
 instances chosen for the sampling type. -/
 private theorem uniformExpect_inst_irrel {α : Type*}
@@ -1895,29 +1866,15 @@ private theorem lazy_le_mapGame_real {R : EffectiveRelation}
   have h_main :
       uniformExpect Ω fL ≤ uniformExpect Ω fM + (q : ℝ) ^ 2 * δ n := by
     exact le_trans h_lin (by linarith [h_bad_bound])
-  have h_equiv :
-      ((let q := A.numQueries n;
-        uniformExpect
-          ((R.Witness n × (Fin q → P.ProverRandomness n)) ×
-            (Fin q → P.Challenge n))
-          (fun x =>
-            match lazyRom_run_stmt P Msg A n x.1.1 (keyOf n x.1.1) x.1.2 x.2 with
-            | none => 0
-            | some _ => 1)) ≤
-        (let q := A.numQueries n;
-          uniformExpect
-            ((R.Witness n × (Fin q → P.ProverRandomness n)) ×
-              (Fin q → P.Challenge n))
-            (fun x =>
-              match mapGame_real_run_stmt P Msg A n x.1.1 (keyOf n x.1.1) x.1.2 x.2 with
-              | none => 0
-              | some _ => 1)) +
-        (A.numQueries n : ℝ) ^ 2 * δ n) ↔
-      (uniformExpect Ω fL ≤ uniformExpect Ω fM + (q : ℝ) ^ 2 * δ n) := by
-    constructor <;> intro h
-    · simpa [q, Ω, fL, fM, uniformExpect_inst_irrel] using h
-    · simpa [q, Ω, fL, fM, uniformExpect_inst_irrel] using h
-  exact lazy_le_mapGame_real_of_unfolded P Msg keyOf A n δ (h_equiv.mpr h_main)
+  have h_advL : lazyRom_advantage P Msg keyOf A n = uniformExpect Ω fL := by
+    unfold lazyRom_advantage forkAcceptProb lazyRom_run
+    congr!; rename_i x; obtain ⟨⟨w, rs⟩, ch⟩ := x
+    dsimp [fL]; split <;> simp_all
+  have h_advM : mapGame_real_advantage P Msg keyOf A n = uniformExpect Ω fM := by
+    unfold mapGame_real_advantage forkAcceptProb mapGame_real_run
+    congr!; rename_i x; obtain ⟨⟨w, rs⟩, ch⟩ := x
+    dsimp [fM]; split <;> simp_all
+  rw [h_advL, h_advM]; exact h_main
 
 /-- **ROM ≤ MapGame_Real + q²δ**: the ROM advantage is at most the
 MapGame_Real advantage plus a commitment collision term `q² · δ`.
