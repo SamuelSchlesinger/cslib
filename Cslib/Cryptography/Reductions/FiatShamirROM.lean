@@ -508,10 +508,13 @@ private noncomputable def mapGame_real_run_stmt {R : EffectiveRelation}
   | some (queries, (mf, tf, zf), _) =>
     let j := queries.findIdx (fun x => decide (x = .inr (mf, tf)))
     if hj : j < q then
-      let signMsgs := queries.filterMap (fun q => match q with
-        | .inl m => some m | .inr _ => none)
-      if P.verify n y tf (ch ⟨j, hj⟩) zf && !(signMsgs.contains mf) then
-        some (⟨j, hj⟩, (mf, tf, zf))
+      if j < queries.length then
+        let signMsgs := queries.filterMap (fun q => match q with
+          | .inl m => some m | .inr _ => none)
+        if P.verify n y tf (ch ⟨j, hj⟩) zf && !(signMsgs.contains mf) then
+          some (⟨j, hj⟩, (mf, tf, zf))
+        else
+          none
       else
         none
     else
@@ -810,10 +813,13 @@ private noncomputable def mapGame1_hvzk_run_stmt {R : EffectiveRelation}
   | some (queries, (mf, tf, zf), _) =>
     let j := queries.findIdx (fun x => decide (x = .inr (mf, tf)))
     if hj : j < q then
-      let signMsgs := queries.filterMap (fun q => match q with
-        | .inl m => some m | .inr _ => none)
-      if P.verify n y tf (ch ⟨j, hj⟩) zf && !(signMsgs.contains mf) then
-        some (⟨j, hj⟩, (mf, tf, zf))
+      if j < queries.length then
+        let signMsgs := queries.filterMap (fun q => match q with
+          | .inl m => some m | .inr _ => none)
+        if P.verify n y tf (ch ⟨j, hj⟩) zf && !(signMsgs.contains mf) then
+          some (⟨j, hj⟩, (mf, tf, zf))
+        else
+          none
       else
         none
     else
@@ -909,10 +915,12 @@ private theorem mapGame_real_eq_mapGame1_hvzk {R : EffectiveRelation}
     | some (queries, (mf, tf, zf), _) =>
       let j := queries.findIdx (fun x => decide (x = Sum.inr (mf, tf)))
       if hj : j < q then
-        let signMsgs := queries.filterMap (fun q => match q with
-          | Sum.inl m => some m | Sum.inr _ => none)
-        if P.verify n y tf (ch ⟨j, hj⟩) zf && !(signMsgs.contains mf) then
-          some (⟨j, hj⟩, (mf, tf, zf))
+        if j < queries.length then
+          let signMsgs := queries.filterMap (fun q => match q with
+            | Sum.inl m => some m | Sum.inr _ => none)
+          if P.verify n y tf (ch ⟨j, hj⟩) zf && !(signMsgs.contains mf) then
+            some (⟨j, hj⟩, (mf, tf, zf))
+          else none
         else none
       else none
   -- Factoring: run_stmt = pp ∘ runWithState ∘ oracle
@@ -1497,9 +1505,534 @@ private theorem lazyCommitReuse_bound {R : EffectiveRelation}
     _ ≤ (q : ℝ) ^ 2 * δ n := by
         simp [Fintype.card_prod, Fintype.card_fin]; ring_nf; exact le_refl _
 
+/-- Single-step lookup persistence for `mapGameRealOracle`: if `(mf, tf)` is
+already in the map and the query is not a signing query for `mf`, the lookup
+is preserved. -/
+private theorem mapGameRealOracle_lookup_persist {R : EffectiveRelation}
+    (P : SigmaProtocol R) (Msg : ℕ → Type)
+    [∀ n, DecidableEq (Msg n)]
+    (n : ℕ) (q : ℕ)
+    (w : R.Witness n) (y : R.Statement n)
+    (rs : Fin q → P.ProverRandomness n)
+    (ch : Fin q → P.Challenge n)
+    (i : Fin q) (map : MapState P Msg n)
+    (mf : Msg n) (tf : P.Commitment n) (v : P.Challenge n)
+    (qry : Msg n ⊕ (Msg n × P.Commitment n))
+    (h_lookup : assocLookup (mf, tf) map = some v)
+    (h_not_sign_mf : ∀ m, qry = .inl m → m ≠ mf) :
+    assocLookup (mf, tf) (mapGameRealOracle P Msg n q w y rs ch i map qry).2 = some v := by
+  letI := P.commitmentDecEq n
+  cases qry with
+  | inl m =>
+    simp only [mapGameRealOracle]
+    have hne : m ≠ mf := h_not_sign_mf m rfl
+    simp only [assocLookup]
+    rw [if_neg (fun h => hne (Prod.mk.inj h).1)]
+    exact h_lookup
+  | inr mt =>
+    simp only [mapGameRealOracle]
+    cases hlk : assocLookup (mt.1, mt.2) map with
+    | some c => exact h_lookup
+    | none =>
+      simp only [assocLookup]
+      have hne : ¬ ((mt.1, mt.2) = (mf, tf)) := by
+        intro heq; rw [Prod.mk.injEq] at heq; rw [heq.1, heq.2] at hlk
+        simp [hlk] at h_lookup
+      rw [if_neg hne]
+      exact h_lookup
+
+/-- The query log produced by `runWithState` has length at most `fuel`. -/
+private theorem runWithState_length_le {Q R A S : Type}
+    : ∀ (interaction : OracleInteraction Q R A)
+        (fuel : Nat) (oracle : Fin fuel → S → Q → R × S)
+        (s : S) (queries : List Q) (a : A) (sf : S),
+      interaction.runWithState fuel oracle s = some (queries, a, sf) →
+      queries.length ≤ fuel := by
+  intro interaction fuel
+  induction fuel generalizing interaction with
+  | zero =>
+    intro oracle s queries a sf h
+    cases interaction with
+    | done _ =>
+      change some ([], _, _) = some (queries, a, sf) at h
+      obtain ⟨rfl, _, _⟩ := Prod.mk.inj (Option.some.inj h)
+      simp
+    | query _ _ => exact absurd h nofun
+  | succ n ih =>
+    intro oracle s queries a sf h
+    cases interaction with
+    | done _ =>
+      change some ([], _, _) = some (queries, a, sf) at h
+      obtain ⟨rfl, _, _⟩ := Prod.mk.inj (Option.some.inj h)
+      simp
+    | query q k =>
+      simp only [OracleInteraction.runWithState] at h
+      split at h
+      · exact absurd h nofun
+      · have hinj := Option.some.inj h
+        obtain ⟨rfl, rfl, rfl⟩ := Prod.mk.inj hinj
+        simp only [List.length_cons]
+        exact Nat.succ_le_succ (ih _ _ _ _ _ _ (by assumption))
+
+/-- `runWithState` final state equals `stateBeforeWithState` at `queries.length`. -/
+private theorem runWithState_finalState_eq_stateBeforeWithState {Q R A S : Type}
+    : ∀ (interaction : OracleInteraction Q R A)
+        (fuel : Nat) (oracle : Fin fuel → S → Q → R × S)
+        (s : S) (queries : List Q) (a : A) (sf : S),
+      interaction.runWithState fuel oracle s = some (queries, a, sf) →
+      stateBeforeWithState interaction fuel oracle s queries.length = some sf := by
+  intro interaction fuel
+  induction fuel generalizing interaction with
+  | zero =>
+    intro oracle s queries a sf h
+    cases interaction with
+    | done a' =>
+      simp [OracleInteraction.runWithState] at h
+      obtain ⟨rfl, _, rfl⟩ := h; simp [stateBeforeWithState]
+    | query _ _ => simp [OracleInteraction.runWithState] at h
+  | succ fuel ih =>
+    intro oracle s queries a sf h
+    cases interaction with
+    | done a' =>
+      simp [OracleInteraction.runWithState] at h
+      obtain ⟨rfl, _, rfl⟩ := h; simp [stateBeforeWithState]
+    | query q k =>
+      simp only [OracleInteraction.runWithState] at h
+      split at h
+      · simp at h
+      · next qs' a' hrec =>
+        simp only [Option.some.injEq, Prod.mk.injEq] at h
+        obtain ⟨rfl, rfl, rfl⟩ := h
+        simp only [stateBeforeWithState, List.length_cons]
+        exact ih _ _ _ _ _ _ hrec
+
+/-- `runWithState` query list entries match `queryAtWithState`. -/
+private theorem runWithState_query_eq_queryAtWithState {Q R A S : Type}
+    : ∀ (interaction : OracleInteraction Q R A)
+        (fuel : Nat) (oracle : Fin fuel → S → Q → R × S)
+        (s : S) (queries : List Q) (a : A) (sf : S),
+      interaction.runWithState fuel oracle s = some (queries, a, sf) →
+      ∀ (idx : Nat) (hlt : idx < queries.length),
+        queryAtWithState interaction fuel oracle s idx = some (queries.get ⟨idx, hlt⟩) := by
+  intro interaction fuel
+  induction fuel generalizing interaction with
+  | zero =>
+    intro oracle s queries a sf h
+    cases interaction with
+    | done a' =>
+      simp [OracleInteraction.runWithState] at h; obtain ⟨rfl, _, _⟩ := h
+      intro idx hlt; simp at hlt
+    | query _ _ => simp [OracleInteraction.runWithState] at h
+  | succ fuel ih =>
+    intro oracle s queries a sf h
+    cases interaction with
+    | done a' =>
+      simp [OracleInteraction.runWithState] at h; obtain ⟨rfl, _, _⟩ := h
+      intro idx hlt; simp at hlt
+    | query q k =>
+      simp only [OracleInteraction.runWithState] at h
+      split at h
+      · simp at h
+      · next qs' a' hrec =>
+        simp only [Option.some.injEq, Prod.mk.injEq] at h
+        obtain ⟨rfl, rfl, rfl⟩ := h
+        intro idx hlt
+        cases idx with
+        | zero => simp [queryAtWithState]
+        | succ idx' =>
+          simp only [queryAtWithState, List.get_cons_succ]
+          exact ih _ _ _ _ _ _ hrec idx' (by simpa [List.length_cons] using hlt)
+
+/-- At index 0, `stateBeforeWithState` always returns the initial state. -/
+private theorem stateBeforeWithState_at_zero {Q R A S : Type}
+    (interaction : OracleInteraction Q R A)
+    (fuel : Nat) (oracle : Fin fuel → S → Q → R × S)
+    (s : S) :
+    stateBeforeWithState interaction fuel oracle s 0 = some s := by
+  cases interaction with
+  | done _ => rfl
+  | query _ _ => cases fuel <;> rfl
+
+/-- If `stateBeforeWithState` at `idx+1` is `some`, then so are the state and
+query at `idx`, and they compose via the oracle. -/
+private theorem stateBeforeWithState_pred {Q R A S : Type}
+    : ∀ (interaction : OracleInteraction Q R A)
+        (fuel : Nat) (oracle : Fin fuel → S → Q → R × S)
+        (s : S) (idx : Nat) (hidx : idx < fuel) (st' : S),
+      stateBeforeWithState interaction fuel oracle s (idx + 1) = some st' →
+      ∃ (st : S) (qry : Q),
+        stateBeforeWithState interaction fuel oracle s idx = some st ∧
+        queryAtWithState interaction fuel oracle s idx = some qry ∧
+        st' = (oracle ⟨idx, hidx⟩ st qry).2 := by
+  intro interaction fuel
+  induction fuel generalizing interaction with
+  | zero => intro _ _ _ _ hidx; omega
+  | succ fuel ih =>
+    intro oracle s idx hidx st' h_step
+    cases interaction with
+    | done a =>
+      cases idx with
+      | zero => simp [stateBeforeWithState] at h_step
+      | succ _ => simp [stateBeforeWithState] at h_step
+    | query q k =>
+      cases idx with
+      | zero =>
+        simp only [stateBeforeWithState] at h_step
+        have h0 := stateBeforeWithState_at_zero
+          (k (oracle ⟨0, Nat.zero_lt_succ fuel⟩ s q).1) fuel
+          (fun i => oracle ⟨i.val + 1, Nat.succ_lt_succ i.isLt⟩)
+          (oracle ⟨0, Nat.zero_lt_succ fuel⟩ s q).2
+        rw [h0] at h_step
+        exact ⟨s, q, rfl, rfl, (Option.some.inj h_step).symm⟩
+      | succ idx' =>
+        simp only [stateBeforeWithState] at h_step
+        have ih_result := ih (k (oracle ⟨0, Nat.zero_lt_succ fuel⟩ s q).1)
+          (fun i => oracle ⟨i.val + 1, Nat.succ_lt_succ i.isLt⟩)
+          (oracle ⟨0, Nat.zero_lt_succ fuel⟩ s q).2
+          idx' (by omega) st' h_step
+        obtain ⟨st, qry, h_st, h_qry, h_eq⟩ := ih_result
+        simp only [stateBeforeWithState, queryAtWithState]
+        exact ⟨st, qry, h_st, h_qry, h_eq⟩
+
+/-- The state at step `idx + 1` is obtained by applying the oracle at step `idx`
+to the state and query at step `idx`. -/
+private theorem stateBeforeWithState_step {Q R A S : Type}
+    : ∀ (interaction : OracleInteraction Q R A)
+        (fuel : Nat) (oracle : Fin fuel → S → Q → R × S)
+        (s : S) (idx : Nat) (hidx : idx < fuel) (st : S) (qry : Q),
+      stateBeforeWithState interaction fuel oracle s idx = some st →
+      queryAtWithState interaction fuel oracle s idx = some qry →
+      stateBeforeWithState interaction fuel oracle s (idx + 1) =
+        some (oracle ⟨idx, hidx⟩ st qry).2 := by
+  intro interaction fuel
+  induction fuel generalizing interaction with
+  | zero => intro _ _ _ _ hidx; omega
+  | succ fuel ih =>
+    intro oracle s idx hidx st qry h_st h_qry
+    cases interaction with
+    | done a =>
+      cases idx with
+      | zero => simp [queryAtWithState] at h_qry
+      | succ _ => simp [stateBeforeWithState] at h_st
+    | query q k =>
+      cases idx with
+      | zero =>
+        simp [stateBeforeWithState] at h_st
+        simp [queryAtWithState] at h_qry
+        subst h_st; subst h_qry
+        simp only [stateBeforeWithState]
+        cases (k (oracle ⟨0, Nat.zero_lt_succ fuel⟩ s q).1) with
+        | done a => cases fuel <;> simp [stateBeforeWithState]
+        | query _ _ => cases fuel <;> simp [stateBeforeWithState]
+      | succ idx' =>
+        simp only [stateBeforeWithState] at h_st ⊢
+        simp only [queryAtWithState] at h_qry
+        exact ih (k (oracle ⟨0, Nat.zero_lt_succ fuel⟩ s q).1)
+          (fun i => oracle ⟨i.val + 1, Nat.succ_lt_succ i.isLt⟩)
+          (oracle ⟨0, Nat.zero_lt_succ fuel⟩ s q).2
+          idx' (by omega) st qry h_st h_qry
+
+/-- Single-step preservation: `mapGameRealOracle` preserves
+`assocLookup key st = none` when the query doesn't insert `key`. -/
+private theorem mapGameReal_step_preserves_none {R : EffectiveRelation}
+    (P : SigmaProtocol R) (Msg : ℕ → Type)
+    [∀ n, DecidableEq (Msg n)]
+    (n : ℕ) (q : ℕ)
+    (w : R.Witness n) (y : R.Statement n)
+    (rs : Fin q → P.ProverRandomness n)
+    (ch : Fin q → P.Challenge n)
+    (i : Fin q) (st : MapState P Msg n)
+    (qry : Msg n ⊕ (Msg n × P.Commitment n))
+    (key : Msg n × P.Commitment n)
+    (h_none : assocLookup key st = none)
+    (h_not_hash : qry ≠ Sum.inr key)
+    (h_not_sign : ∀ m, qry = Sum.inl m → m ≠ key.1) :
+    assocLookup key (mapGameRealOracle P Msg n q w y rs ch i st qry).2 = none := by
+  letI := P.commitmentDecEq n
+  cases qry with
+  | inl m =>
+    simp only [mapGameRealOracle, assocLookup]
+    have hne : m ≠ key.1 := h_not_sign m rfl
+    rw [if_neg (fun h => hne (Prod.mk.inj h).1)]
+    exact h_none
+  | inr mt =>
+    simp only [mapGameRealOracle]
+    cases hlk : assocLookup mt st with
+    | some c => exact h_none
+    | none =>
+      simp only [assocLookup]
+      have hne : mt ≠ key := fun h => h_not_hash (congrArg Sum.inr h)
+      rw [if_neg hne]
+      exact h_none
+
+/-- In the mapGameRealOracle execution, if the forged message was never signed
+and the first hash query for the forgery key is at index `j`, then the final
+map associates the forgery key with `ch j`. -/
+private theorem mapGameRealOracle_finalMap_lookup {R : EffectiveRelation}
+    (P : SigmaProtocol R) (Msg : ℕ → Type)
+    [∀ n, DecidableEq (Msg n)]
+    (A : ROM_EUF_CMA_Adversary P Msg) (n : ℕ)
+    (w : R.Witness n) (y : R.Statement n)
+    (rs : Fin (A.numQueries n) → P.ProverRandomness n)
+    (ch : Fin (A.numQueries n) → P.Challenge n)
+    (queries : List (Msg n ⊕ (Msg n × P.Commitment n)))
+    (mf : Msg n) (tf : P.Commitment n) (zf : P.Response n)
+    (finalMap : MapState P Msg n)
+    (h_result : (A.interact n y).runWithState (A.numQueries n)
+        (mapGameRealOracle P Msg n (A.numQueries n) w y rs ch) [] =
+      some (queries, (mf, tf, zf), finalMap))
+    (hj : List.findIdx (fun x => decide (x = Sum.inr (mf, tf))) queries < A.numQueries n)
+    (hj_in : List.findIdx (fun x => decide (x = Sum.inr (mf, tf))) queries < queries.length)
+    (h_not_signed : (List.filterMap (fun q => match q with
+      | .inl m => some m | .inr _ => none) queries).contains mf = false) :
+    assocLookup (mf, tf) finalMap =
+      some (ch ⟨List.findIdx (fun x => decide (x = Sum.inr (mf, tf))) queries, hj⟩) := by
+  set j := List.findIdx (fun x => decide (x = Sum.inr (mf, tf))) queries with j_def
+  set oracle := mapGameRealOracle P Msg n (A.numQueries n) w y rs ch
+  have h_final := runWithState_finalState_eq_stateBeforeWithState _ _ _ _ _ _ _ h_result
+  have h_query := runWithState_query_eq_queryAtWithState _ _ _ _ _ _ _ h_result
+  letI := P.commitmentDecEq n
+  have h_len_le := runWithState_length_le _ _ _ _ _ _ _ h_result
+  -- Sub-claim: no signing query has message mf
+  have h_not_sign_any : ∀ (i : Nat) (hi : i < queries.length) (m : Msg n),
+      queries.get ⟨i, hi⟩ = .inl m → m ≠ mf := by
+    intro i hi m hqi hmf; rw [hmf] at hqi
+    have hmem : Sum.inl mf ∈ queries := by rw [← hqi]; exact List.getElem_mem hi
+    have hfm : mf ∈ queries.filterMap (fun q => match q with
+      | .inl m => some m | .inr _ => none) :=
+      List.mem_filterMap.mpr ⟨.inl mf, hmem, rfl⟩
+    have h_ct := List.contains_iff_mem.mpr hfm
+    rw [h_ct] at h_not_signed
+    exact Bool.noConfusion h_not_signed
+  -- Sub-claim: before step j, no hash query matches (mf, tf)
+  have h_not_hash_before : ∀ (i : Nat), i < j →
+      ∀ (hi : i < queries.length), queries.get ⟨i, hi⟩ ≠ .inr (mf, tf) := by
+    intro i hi_lt_j hi hqi
+    exact absurd hqi (by
+      have := List.not_of_lt_findIdx (j_def ▸ hi_lt_j)
+      simpa using this)
+  -- Main proof by forward induction
+  suffices ∀ (k : Nat) (hk : k ≤ queries.length),
+      ∃ st, stateBeforeWithState (A.interact n y) (A.numQueries n) oracle [] k = some st ∧
+        (k ≤ j → assocLookup (mf, tf) st = none) ∧
+        (j < k → assocLookup (mf, tf) st = some (ch ⟨j, hj⟩)) by
+    obtain ⟨st, h_st, _, h_after⟩ := this queries.length le_rfl
+    rw [h_final] at h_st; cases h_st
+    exact h_after (by omega)
+  intro k
+  induction k with
+  | zero =>
+    intro _
+    exact ⟨[], stateBeforeWithState_at_zero _ _ _ _, fun _ => rfl, fun h => absurd h (by omega)⟩
+  | succ k' ih =>
+    intro hk
+    obtain ⟨st_prev, h_prev, h_none_if, h_some_if⟩ := ih (by omega)
+    have hk'_fuel : k' < A.numQueries n := by omega
+    -- Get query at step k'
+    have hk'_len : k' < queries.length := by omega
+    have h_qk : queryAtWithState (A.interact n y) (A.numQueries n) oracle [] k' =
+        some (queries.get ⟨k', hk'_len⟩) := h_query k' hk'_len
+    -- Step forward
+    have h_step := stateBeforeWithState_step _ _ _ _ k' hk'_fuel st_prev
+      (queries.get ⟨k', hk'_len⟩) h_prev h_qk
+    set st_next := (oracle ⟨k', hk'_fuel⟩ st_prev (queries.get ⟨k', hk'_len⟩)).2
+    refine ⟨st_next, h_step, fun hle => ?_, fun hlt => ?_⟩
+    · -- k'+1 ≤ j, so k' < j: lookup stays none
+      have h_prev_none := h_none_if (by omega)
+      exact mapGameReal_step_preserves_none P Msg n (A.numQueries n) w y rs ch
+        ⟨k', hk'_fuel⟩ st_prev (queries.get ⟨k', hk'_len⟩) (mf, tf) h_prev_none
+        (h_not_hash_before k' (by omega) hk'_len)
+        (fun m hm => h_not_sign_any k' hk'_len m hm)
+    · -- j < k'+1, so j ≤ k'
+      by_cases hjk : j = k'
+      · -- k' = j: this is the insertion step
+        subst hjk
+        have h_prev_none := h_none_if le_rfl
+        -- Query at step j is .inr (mf, tf)
+        have h_qj_eq : queries.get ⟨j, hk'_len⟩ = .inr (mf, tf) := by
+          have := List.findIdx_getElem (w := hj_in)
+          simp only [decide_eq_true_eq] at this; exact this
+        -- Oracle inserts (mf, tf) since assocLookup is none
+        show assocLookup (mf, tf) st_next = some (ch ⟨j, hj⟩)
+        simp only [st_next, oracle, h_qj_eq, mapGameRealOracle, h_prev_none, assocLookup]
+        simp
+      · -- k' > j: lookup persists from previous step
+        have h_prev_some := h_some_if (by omega)
+        show assocLookup (mf, tf) st_next = some (ch ⟨j, hj⟩)
+        exact mapGameRealOracle_lookup_persist P Msg n (A.numQueries n) w y rs ch
+          ⟨k', hk'_fuel⟩ st_prev mf tf (ch ⟨j, hj⟩) (queries.get ⟨k', hk'_len⟩)
+          h_prev_some (fun m hm => h_not_sign_any k' hk'_len m hm)
+
+/-- Entries in a stateful interaction's state came from the initial state
+or were inserted by an oracle step. -/
+private theorem stateBeforeWithState_mem_source {Q R A : Type} {S : Type}
+    : ∀ (interaction : OracleInteraction Q R A)
+        (fuel : Nat) (oracle : Fin fuel → S → Q → R × S)
+        (s : S) (idx : Nat) (st : S)
+        (P : S → Prop),
+      P s →
+      (∀ (j : Fin fuel) (sj : S) (qj : Q), P sj → P (oracle j sj qj).2) →
+      stateBeforeWithState interaction fuel oracle s idx = some st →
+      P st := by
+  intro interaction fuel
+  induction fuel generalizing interaction with
+  | zero =>
+    intro oracle s idx st P hP _ h_st
+    cases interaction with
+    | done _ => cases idx with
+                | zero => simp [stateBeforeWithState] at h_st; subst h_st; exact hP
+                | succ _ => simp [stateBeforeWithState] at h_st
+    | query _ _ => cases idx with
+                   | zero => simp [stateBeforeWithState] at h_st; subst h_st; exact hP
+                   | succ _ => simp [stateBeforeWithState] at h_st
+  | succ fuel ih =>
+    intro oracle s idx st P hP hOracle h_st
+    cases interaction with
+    | done a =>
+      cases idx with
+      | zero => simp [stateBeforeWithState] at h_st; subst h_st; exact hP
+      | succ _ => simp [stateBeforeWithState] at h_st
+    | query q k =>
+      cases idx with
+      | zero =>
+        simp [stateBeforeWithState] at h_st; subst h_st; exact hP
+      | succ idx' =>
+        simp only [stateBeforeWithState] at h_st
+        exact ih (k (oracle ⟨0, Nat.zero_lt_succ fuel⟩ s q).1)
+          (fun i => oracle ⟨i.val + 1, Nat.succ_lt_succ i.isLt⟩)
+          (oracle ⟨0, Nat.zero_lt_succ fuel⟩ s q).2 idx' st P
+          (hOracle ⟨0, Nat.zero_lt_succ fuel⟩ s q hP)
+          (fun j sj qj hPsj => hOracle ⟨j.val + 1, Nat.succ_lt_succ j.isLt⟩ sj qj hPsj)
+          h_st
+
+/-- Every entry in the lazy-oracle map at step `idx` has its commitment
+component witnessed by `lazyInsertedCommitAt` at some earlier step. -/
+private theorem lazyMap_entry_commit_source {R : EffectiveRelation}
+    (P : SigmaProtocol R) (Msg : ℕ → Type)
+    [∀ n, DecidableEq (Msg n)]
+    (A : ROM_EUF_CMA_Adversary P Msg) (n : ℕ)
+    (w : R.Witness n) (y : R.Statement n)
+    (rs : Fin (A.numQueries n) → P.ProverRandomness n)
+    (ch : Fin (A.numQueries n) → P.Challenge n)
+    (idx : Nat) (hidx : idx < A.numQueries n)
+    (st : MapState P Msg n)
+    (key : Msg n × P.Commitment n) (v : P.Challenge n)
+    (h_st : lazyMapBefore P Msg A n w y rs ch idx = some st)
+    (h_mem : (key, v) ∈ st) :
+    ∃ (i : Fin (A.numQueries n)), i.val < idx ∧
+      lazyInsertedCommitAt P Msg A n w y rs ch i = some key.2 := by
+  induction idx generalizing st key v with
+  | zero =>
+    unfold lazyMapBefore at h_st
+    rw [stateBeforeWithState_at_zero] at h_st
+    cases h_st; simp at h_mem
+  | succ k ih =>
+    have hk : k < A.numQueries n := Nat.lt_of_succ_lt hidx
+    unfold lazyMapBefore at h_st
+    obtain ⟨map_k, qry_k, h_map_k, h_qry_k, h_eq⟩ :=
+      stateBeforeWithState_pred _ _ _ _ k hk st h_st
+    rw [h_eq] at h_mem
+    letI := P.commitmentDecEq n
+    cases qry_k with
+    | inl m =>
+      simp only [lazyRomOracle] at h_mem
+      cases hlookup : assocLookup (m, P.commit n w y (rs ⟨k, hk⟩)) map_k with
+      | some c =>
+        simp only [hlookup] at h_mem
+        obtain ⟨i, hi_lt, hi⟩ := ih hk map_k key v (by unfold lazyMapBefore; exact h_map_k) h_mem
+        exact ⟨i, by omega, hi⟩
+      | none =>
+        simp only [hlookup] at h_mem
+        cases h_mem with
+        | head =>
+          refine ⟨⟨k, hk⟩, by change k < k + 1; omega, ?_⟩
+          unfold lazyInsertedCommitAt lazyQueryAt
+          rw [h_qry_k]
+        | tail _ h_tail =>
+          obtain ⟨i, hi_lt, hi⟩ := ih hk map_k key v (by unfold lazyMapBefore; exact h_map_k) h_tail
+          exact ⟨i, by omega, hi⟩
+    | inr mt =>
+      simp only [lazyRomOracle] at h_mem
+      cases hlookup : assocLookup (mt.1, mt.2) map_k with
+      | some c =>
+        simp only [hlookup] at h_mem
+        obtain ⟨i, hi_lt, hi⟩ := ih hk map_k key v (by unfold lazyMapBefore; exact h_map_k) h_mem
+        exact ⟨i, by omega, hi⟩
+      | none =>
+        simp only [hlookup] at h_mem
+        cases h_mem with
+        | head =>
+          refine ⟨⟨k, hk⟩, by change k < k + 1; omega, ?_⟩
+          unfold lazyInsertedCommitAt lazyQueryAt
+          rw [h_qry_k]
+        | tail _ h_tail =>
+          obtain ⟨i, hi_lt, hi⟩ := ih hk map_k key v (by unfold lazyMapBefore; exact h_map_k) h_tail
+          exact ⟨i, by omega, hi⟩
+
+/-- If a signing query at step `k` finds its commitment already in the map,
+then a pair-reuse event exists. -/
+private theorem map_lookup_implies_pairReuse {R : EffectiveRelation}
+    (P : SigmaProtocol R) (Msg : ℕ → Type)
+    [∀ n, DecidableEq (Msg n)]
+    (A : ROM_EUF_CMA_Adversary P Msg) (n : ℕ)
+    (w : R.Witness n) (y : R.Statement n)
+    (rs : Fin (A.numQueries n) → P.ProverRandomness n)
+    (ch : Fin (A.numQueries n) → P.Challenge n)
+    (k : Nat) (hk : k < A.numQueries n)
+    (st : MapState P Msg n)
+    (m : Msg n) (c : P.Challenge n)
+    (h_st : lazyMapBefore P Msg A n w y rs ch k = some st)
+    (h_qry : lazyQueryAt P Msg A n w y rs ch k = some (Sum.inl m))
+    (h_lookup : assocLookup (m, P.commit n w y (rs ⟨k, hk⟩)) st = some c) :
+    ∃ (i j : Fin (A.numQueries n)), i.val < j.val ∧
+      lazyPairCommitReuse P Msg A n w y rs ch i j = true := by
+  have h_mem := assocLookup_some_mem _ _ _ h_lookup
+  obtain ⟨i, hi_lt, hi_commit⟩ := lazyMap_entry_commit_source P Msg A n w y rs ch
+    k hk st (m, P.commit n w y (rs ⟨k, hk⟩)) c h_st h_mem
+  refine ⟨i, ⟨k, hk⟩, hi_lt, ?_⟩
+  unfold lazyPairCommitReuse
+  rw [hi_commit, show (⟨k, hk⟩ : Fin (A.numQueries n)).val = k from rfl, h_qry]
+  simp
+
+/-- If two oracles agree at every step on the `(state, query)` encountered
+during execution with `oracle₁`, then `runWithState` produces the same result. -/
+private theorem runWithState_eq_of_oracle_agree_on_trace {Q R A S : Type}
+    : ∀ (interaction : OracleInteraction Q R A)
+        (fuel : Nat) (oracle₁ oracle₂ : Fin fuel → S → Q → R × S)
+        (s : S),
+        (∀ (k : Nat) (hk : k < fuel) (st : S) (q : Q),
+          stateBeforeWithState interaction fuel oracle₁ s k = some st →
+          queryAtWithState interaction fuel oracle₁ s k = some q →
+          oracle₁ ⟨k, hk⟩ st q = oracle₂ ⟨k, hk⟩ st q) →
+        interaction.runWithState fuel oracle₁ s =
+        interaction.runWithState fuel oracle₂ s := by
+  intro interaction fuel
+  induction fuel generalizing interaction with
+  | zero => intro _ _ _ _; cases interaction <;> rfl
+  | succ n ih =>
+    intro oracle₁ oracle₂ s h
+    cases interaction with
+    | done => rfl
+    | query q k =>
+      simp only [OracleInteraction.runWithState]
+      have h0 : oracle₁ ⟨0, Nat.zero_lt_succ n⟩ s q =
+          oracle₂ ⟨0, Nat.zero_lt_succ n⟩ s q :=
+        h 0 (Nat.zero_lt_succ n) s q rfl rfl
+      rw [h0]
+      have h_ih := ih (k (oracle₂ ⟨0, Nat.zero_lt_succ n⟩ s q).1)
+        (fun (i : Fin n) => oracle₁ ⟨i.val + 1, Nat.succ_lt_succ i.isLt⟩)
+        (fun (i : Fin n) => oracle₂ ⟨i.val + 1, Nat.succ_lt_succ i.isLt⟩)
+        (oracle₂ ⟨0, Nat.zero_lt_succ n⟩ s q).2
+        (fun k' hk' st' q' h_state h_query => by
+          have := h (k' + 1) (by omega) st' q'
+            (by simp only [stateBeforeWithState]; rw [h0]; exact h_state)
+            (by simp only [queryAtWithState]; rw [h0]; exact h_query)
+          exact this)
+      rw [h_ih]
+
 /-- If no pair-reuse event occurs, LazyROM and MapGame_Real produce the same
 run statement for fixed coins. -/
-private axiom lazy_run_stmt_eq_mapGame_real_run_stmt_of_no_reuse {R : EffectiveRelation}
+private theorem lazy_run_stmt_eq_mapGame_real_run_stmt_of_no_reuse {R : EffectiveRelation}
     (P : SigmaProtocol R) (Msg : ℕ → Type)
     [∀ n, DecidableEq (Msg n)]
     (A : ROM_EUF_CMA_Adversary P Msg) (n : ℕ)
@@ -1509,7 +2042,116 @@ private axiom lazy_run_stmt_eq_mapGame_real_run_stmt_of_no_reuse {R : EffectiveR
     (¬ ∃ (i j : Fin (A.numQueries n)), i.val < j.val ∧
       lazyPairCommitReuse P Msg A n w y rs ch i j = true) →
     lazyRom_run_stmt P Msg A n w y rs ch =
-    mapGame_real_run_stmt P Msg A n w y rs ch
+    mapGame_real_run_stmt P Msg A n w y rs ch := by
+  intro h_no_reuse
+  let q := A.numQueries n
+  letI := P.commitmentDecEq n
+  -- Step 1: Show the runWithState calls agree
+  have h_run_eq : (A.interact n y).runWithState q
+      (lazyRomOracle P Msg n q w y rs ch) [] =
+    (A.interact n y).runWithState q
+      (mapGameRealOracle P Msg n q w y rs ch) [] := by
+    apply runWithState_eq_of_oracle_agree_on_trace
+    intro k hk st qry h_st h_qry
+    cases qry with
+    | inr mt =>
+      simp [lazyRomOracle, mapGameRealOracle]
+    | inl m =>
+      unfold lazyRomOracle mapGameRealOracle
+      simp only
+      cases h_lookup : assocLookup (m, P.commit n w y (rs ⟨k, hk⟩)) st with
+      | none => rfl
+      | some c =>
+        exfalso
+        exact h_no_reuse (map_lookup_implies_pairReuse P Msg A n w y rs ch
+          k hk st m c h_st h_qry h_lookup)
+  -- Step 2: Use the equality to simplify
+  simp only [lazyRom_run_stmt, mapGame_real_run_stmt]
+  have h_rw : (A.interact n y).runWithState (A.numQueries n)
+      (lazyRomOracle P Msg n (A.numQueries n) w y rs ch) [] =
+    (A.interact n y).runWithState (A.numQueries n)
+      (mapGameRealOracle P Msg n (A.numQueries n) w y rs ch) [] := h_run_eq
+  rw [h_rw]
+  cases h_result : (A.interact n y).runWithState (A.numQueries n)
+      (mapGameRealOracle P Msg n (A.numQueries n) w y rs ch) [] with
+  | none => rfl
+  | some val =>
+    obtain ⟨queries, ⟨mf, tf, zf⟩, finalMap⟩ := val
+    simp only
+    split
+    next hj =>
+      -- Split on whether j < queries.length (hash was actually queried)
+      by_cases hj_in : List.findIdx (fun x => decide (x = Sum.inr (mf, tf))) queries < queries.length
+      · -- Hash WAS queried: use mapGameRealOracle_finalMap_lookup
+        simp only [hj_in, ↓reduceIte]
+        set signMsgs := List.filterMap (fun q => match q with
+          | .inl m => some m | .inr _ => none) queries
+        cases h_signed : signMsgs.contains mf with
+        | true =>
+          simp only [Bool.not_true, Bool.and_false, Bool.false_eq_true, ↓reduceIte]
+          cases assocLookup (mf, tf) finalMap <;> rfl
+        | false =>
+          have h_lookup := mapGameRealOracle_finalMap_lookup P Msg A n w y rs ch
+            queries mf tf zf finalMap h_result hj hj_in h_signed
+          simp only [h_lookup, ↓reduceIte]
+      · -- Hash was NOT queried: both sides are none
+        simp only [hj_in, ↓reduceIte]
+        -- LHS: match assocLookup ... with | some c => ... | none => none = none
+        set signMsgs := List.filterMap (fun q => match q with
+          | .inl m => some m | .inr _ => none) queries
+        cases h_signed : signMsgs.contains mf with
+        | true =>
+          simp only [Bool.not_true, Bool.and_false, Bool.false_eq_true, ↓reduceIte]
+          cases assocLookup (mf, tf) finalMap <;> rfl
+        | false =>
+          have h_no_hash : Sum.inr (mf, tf) ∉ queries := by
+            intro hmem
+            apply hj_in
+            rw [List.findIdx_lt_length]
+            refine ⟨Sum.inr (mf, tf), hmem, ?_⟩
+            dsimp
+            exact of_decide_eq_self_eq_true _
+          have h_none : assocLookup (mf, tf) finalMap = none := by
+            set oracle := mapGameRealOracle P Msg n (A.numQueries n) w y rs ch
+            have h_final := runWithState_finalState_eq_stateBeforeWithState _ _ _ _ _ _ _ h_result
+            have h_query_at := runWithState_query_eq_queryAtWithState _ _ _ _ _ _ _ h_result
+            have h_len_le := runWithState_length_le _ _ _ _ _ _ _ h_result
+            -- No signing query has message mf
+            have h_not_sign_mf : ∀ (i : Nat) (hi : i < queries.length) (m : Msg n),
+                queries.get ⟨i, hi⟩ = .inl m → m ≠ mf := by
+              intro i hi m hqi hmf; rw [hmf] at hqi
+              have hmem : Sum.inl mf ∈ queries := by rw [← hqi]; exact List.getElem_mem hi
+              have hfm : mf ∈ signMsgs := List.mem_filterMap.mpr ⟨.inl mf, hmem, rfl⟩
+              have h_ct := List.contains_iff_mem.mpr hfm
+              rw [h_ct] at h_signed
+              exact Bool.noConfusion h_signed
+            -- Forward induction: assocLookup stays none at every step
+            suffices ∀ k (hk : k ≤ queries.length),
+                ∃ st, stateBeforeWithState (A.interact n y) (A.numQueries n) oracle [] k = some st ∧
+                  assocLookup (mf, tf) st = none by
+              obtain ⟨st, h_st, h_ans⟩ := this queries.length le_rfl
+              rw [h_final] at h_st; cases h_st; exact h_ans
+            intro k
+            induction k with
+            | zero =>
+              intro _
+              exact ⟨[], stateBeforeWithState_at_zero _ _ _ _, rfl⟩
+            | succ k' ih =>
+              intro hk
+              obtain ⟨st_prev, h_prev, h_prev_none⟩ := ih (by omega)
+              have hk'_fuel : k' < A.numQueries n := by omega
+              have hk'_len : k' < queries.length := by omega
+              have h_qk := h_query_at k' hk'_len
+              have h_step := stateBeforeWithState_step _ _ _ _ k' hk'_fuel st_prev
+                (queries.get ⟨k', hk'_len⟩) h_prev h_qk
+              refine ⟨_, h_step, ?_⟩
+              exact mapGameReal_step_preserves_none P Msg n (A.numQueries n) w y rs ch
+                ⟨k', hk'_fuel⟩ st_prev (queries.get ⟨k', hk'_len⟩) (mf, tf) h_prev_none
+                (by intro h_eq; exact h_no_hash (by rw [← h_eq]; exact List.getElem_mem hk'_len))
+                (fun m hm => h_not_sign_mf k' hk'_len m hm)
+          simp [h_none]
+    next hj =>
+      rfl
 
 /-- `uniformExpect` does not depend on the particular `Fintype`/`Nonempty`
 instances chosen for the sampling type. -/
@@ -1944,10 +2586,12 @@ private lemma mapGame1_hvzk_run_stmt_data {R : EffectiveRelation}
       | some (queries, (mf', tf', zf'), _) =>
         let jv := queries.findIdx (fun x => decide (x = .inr (mf', tf')))
         if hj : jv < A.numQueries n then
-          let signMsgs := queries.filterMap (fun q => match q with
-            | .inl m => some m | .inr _ => none)
-          if P.verify n y tf' (ch ⟨jv, hj⟩) zf' && !(signMsgs.contains mf') then
-            some (⟨jv, hj⟩, (mf', tf', zf'))
+          if jv < queries.length then
+            let signMsgs := queries.filterMap (fun q => match q with
+              | .inl m => some m | .inr _ => none)
+            if P.verify n y tf' (ch ⟨jv, hj⟩) zf' && !(signMsgs.contains mf') then
+              some (⟨jv, hj⟩, (mf', tf', zf'))
+            else none
           else none
         else none := by rfl
   rw [h_def] at h
@@ -1958,27 +2602,29 @@ private lemma mapGame1_hvzk_run_stmt_data {R : EffectiveRelation}
   · dsimp only [] at h
     split at h
     · split at h
-      · have hinj := Option.some.inj h
-        have hj_eq := (Prod.mk.inj hinj).1
-        have hrest := (Prod.mk.inj hinj).2
-        have hmf : mf' = mf := (Prod.mk.inj hrest).1
-        have hrest2 := (Prod.mk.inj hrest).2
-        have htf_eq : tf' = tf := (Prod.mk.inj hrest2).1
-        have hzf : zf' = zf := (Prod.mk.inj hrest2).2
-        refine ⟨queries, finalMap, ?_, ?_, ?_⟩
-        · rw [← hmf, ← htf_eq, ← hzf]
-        · have hj_val : queries.findIdx (fun x => decide (x = .inr (mf', tf'))) = j.val :=
-            congrArg Fin.val hj_eq
-          rw [← hj_val]; exact List.findIdx_le_length
-        · intro hlt
-          rw [← hmf, ← htf_eq]
-          have hj_val : queries.findIdx (fun x => decide (x = .inr (mf', tf'))) = j.val :=
-            congrArg Fin.val hj_eq
-          have hlt' : queries.findIdx (fun x => decide (x = .inr (mf', tf'))) < queries.length :=
-            hj_val ▸ hlt
-          have h_beq := List.findIdx_getElem (w := hlt')
-          have h_at := of_decide_eq_true h_beq
-          simp only [hj_val] at h_at; exact h_at
+      · split at h
+        · have hinj := Option.some.inj h
+          have hj_eq := (Prod.mk.inj hinj).1
+          have hrest := (Prod.mk.inj hinj).2
+          have hmf : mf' = mf := (Prod.mk.inj hrest).1
+          have hrest2 := (Prod.mk.inj hrest).2
+          have htf_eq : tf' = tf := (Prod.mk.inj hrest2).1
+          have hzf : zf' = zf := (Prod.mk.inj hrest2).2
+          refine ⟨queries, finalMap, ?_, ?_, ?_⟩
+          · rw [← hmf, ← htf_eq, ← hzf]
+          · have hj_val : queries.findIdx (fun x => decide (x = .inr (mf', tf'))) = j.val :=
+              congrArg Fin.val hj_eq
+            rw [← hj_val]; exact List.findIdx_le_length
+          · intro hlt
+            rw [← hmf, ← htf_eq]
+            have hj_val : queries.findIdx (fun x => decide (x = .inr (mf', tf'))) = j.val :=
+              congrArg Fin.val hj_eq
+            have hlt' : queries.findIdx (fun x => decide (x = .inr (mf', tf'))) < queries.length :=
+              hj_val ▸ hlt
+            have h_beq := List.findIdx_getElem (w := hlt')
+            have h_at := of_decide_eq_true h_beq
+            simp only [hj_val] at h_at; exact h_at
+        · exact absurd h nofun
       · exact absurd h nofun
     · exact absurd h nofun
 
@@ -1998,13 +2644,15 @@ private lemma mapGame1_hvzk_run_stmt_verify {R : EffectiveRelation}
   · exact absurd h nofun
   · split at h
     · split at h
-      · have hinj := Option.some.inj h
-        have hj_eq : _ = j := congrArg Prod.fst hinj
-        have hmf := congrArg Prod.fst (congrArg Prod.snd hinj)
-        have htf := congrArg Prod.fst (congrArg Prod.snd (congrArg Prod.snd hinj))
-        have hzf := congrArg Prod.snd (congrArg Prod.snd (congrArg Prod.snd hinj))
-        subst hmf; subst htf; subst hzf; rw [← hj_eq]
-        simp_all
+      · split at h
+        · have hinj := Option.some.inj h
+          have hj_eq : _ = j := congrArg Prod.fst hinj
+          have hmf := congrArg Prod.fst (congrArg Prod.snd hinj)
+          have htf := congrArg Prod.fst (congrArg Prod.snd (congrArg Prod.snd hinj))
+          have hzf := congrArg Prod.snd (congrArg Prod.snd (congrArg Prod.snd hinj))
+          subst hmf; subst htf; subst hzf; rw [← hj_eq]
+          simp_all
+        · exact absurd h nofun
       · exact absurd h nofun
     · exact absurd h nofun
 
