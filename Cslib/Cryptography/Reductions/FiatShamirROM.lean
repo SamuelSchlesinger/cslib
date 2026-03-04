@@ -38,7 +38,7 @@ oracle always uses fresh per-query challenges `ch_i` (ignoring the
 Map), while the hash oracle checks the Map for consistency.
 
 **Game hop**: `ROM.adv ≤ MapGame1_HVZK.adv + q² · δ`
-(`rom_eq_mapGame1_hvzk_bound` — sorry'd, combines lazy sampling,
+(`rom_eq_mapGame1_hvzk_bound`, combines lazy sampling,
 collision bound, and HVZK switch).
 
 **Forking step**: In MapGame1_HVZK, the signing oracle doesn't use
@@ -1587,14 +1587,15 @@ private theorem runWithState_finalState_eq_stateBeforeWithState {Q R A S : Type}
     intro oracle s queries a sf h
     cases interaction with
     | done a' =>
-      simp [OracleInteraction.runWithState] at h
+      simp only [OracleInteraction.runWithState, Option.some.injEq, Prod.mk.injEq] at h
       obtain ⟨rfl, _, rfl⟩ := h; simp [stateBeforeWithState]
-    | query _ _ => simp [OracleInteraction.runWithState] at h
+    | query _ _ =>
+      simp only [OracleInteraction.runWithState] at h; contradiction
   | succ fuel ih =>
     intro oracle s queries a sf h
     cases interaction with
     | done a' =>
-      simp [OracleInteraction.runWithState] at h
+      simp only [OracleInteraction.runWithState, Option.some.injEq, Prod.mk.injEq] at h
       obtain ⟨rfl, _, rfl⟩ := h; simp [stateBeforeWithState]
     | query q k =>
       simp only [OracleInteraction.runWithState] at h
@@ -1620,14 +1621,17 @@ private theorem runWithState_query_eq_queryAtWithState {Q R A S : Type}
     intro oracle s queries a sf h
     cases interaction with
     | done a' =>
-      simp [OracleInteraction.runWithState] at h; obtain ⟨rfl, _, _⟩ := h
+      simp only [OracleInteraction.runWithState, Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, _, _⟩ := h
       intro idx hlt; simp at hlt
-    | query _ _ => simp [OracleInteraction.runWithState] at h
+    | query _ _ =>
+      simp only [OracleInteraction.runWithState] at h; contradiction
   | succ fuel ih =>
     intro oracle s queries a sf h
     cases interaction with
     | done a' =>
-      simp [OracleInteraction.runWithState] at h; obtain ⟨rfl, _, _⟩ := h
+      simp only [OracleInteraction.runWithState, Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, _, _⟩ := h
       intro idx hlt; simp at hlt
     | query q k =>
       simp only [OracleInteraction.runWithState] at h
@@ -1717,8 +1721,8 @@ private theorem stateBeforeWithState_step {Q R A S : Type}
     | query q k =>
       cases idx with
       | zero =>
-        simp [stateBeforeWithState] at h_st
-        simp [queryAtWithState] at h_qry
+        simp only [stateBeforeWithState, Option.some.injEq] at h_st
+        simp only [queryAtWithState, Option.some.injEq] at h_qry
         subst h_st; subst h_qry
         simp only [stateBeforeWithState]
         cases (k (oracle ⟨0, Nat.zero_lt_succ fuel⟩ s q).1) with
@@ -1853,12 +1857,12 @@ private theorem mapGameRealOracle_finalMap_lookup {R : EffectiveRelation}
           have := List.findIdx_getElem (w := hj_in)
           simp only [decide_eq_true_eq] at this; exact this
         -- Oracle inserts (mf, tf) since assocLookup is none
-        show assocLookup (mf, tf) st_next = some (ch ⟨j, hj⟩)
+        change assocLookup (mf, tf) st_next = some (ch ⟨j, hj⟩)
         simp only [st_next, oracle, h_qj_eq, mapGameRealOracle, h_prev_none, assocLookup]
         simp
       · -- k' > j: lookup persists from previous step
         have h_prev_some := h_some_if (by omega)
-        show assocLookup (mf, tf) st_next = some (ch ⟨j, hj⟩)
+        change assocLookup (mf, tf) st_next = some (ch ⟨j, hj⟩)
         exact mapGameRealOracle_lookup_persist P Msg n (A.numQueries n) w y rs ch
           ⟨k', hk'_fuel⟩ st_prev mf tf (ch ⟨j, hj⟩) (queries.get ⟨k', hk'_len⟩)
           h_prev_some (fun m hm => h_not_sign_any k' hk'_len m hm)
@@ -1880,22 +1884,35 @@ private theorem stateBeforeWithState_mem_source {Q R A : Type} {S : Type}
     intro oracle s idx st P hP _ h_st
     cases interaction with
     | done _ => cases idx with
-                | zero => simp [stateBeforeWithState] at h_st; subst h_st; exact hP
-                | succ _ => simp [stateBeforeWithState] at h_st
+                | zero =>
+                  simp only [stateBeforeWithState, Option.some.injEq] at h_st
+                  subst h_st; exact hP
+                | succ _ =>
+                  simp only [stateBeforeWithState] at h_st
+                  contradiction
     | query _ _ => cases idx with
-                   | zero => simp [stateBeforeWithState] at h_st; subst h_st; exact hP
-                   | succ _ => simp [stateBeforeWithState] at h_st
+                   | zero =>
+                     simp only [stateBeforeWithState, Option.some.injEq] at h_st
+                     subst h_st; exact hP
+                   | succ _ =>
+                     simp only [stateBeforeWithState] at h_st
+                     contradiction
   | succ fuel ih =>
     intro oracle s idx st P hP hOracle h_st
     cases interaction with
     | done a =>
       cases idx with
-      | zero => simp [stateBeforeWithState] at h_st; subst h_st; exact hP
-      | succ _ => simp [stateBeforeWithState] at h_st
+      | zero =>
+        simp only [stateBeforeWithState, Option.some.injEq] at h_st
+        subst h_st; exact hP
+      | succ _ =>
+        simp only [stateBeforeWithState] at h_st
+        contradiction
     | query q k =>
       cases idx with
       | zero =>
-        simp [stateBeforeWithState] at h_st; subst h_st; exact hP
+        simp only [stateBeforeWithState, Option.some.injEq] at h_st
+        subst h_st; exact hP
       | succ idx' =>
         simp only [stateBeforeWithState] at h_st
         exact ih (k (oracle ⟨0, Nat.zero_lt_succ fuel⟩ s q).1)
@@ -2081,7 +2098,8 @@ private theorem lazy_run_stmt_eq_mapGame_real_run_stmt_of_no_reuse {R : Effectiv
     split
     next hj =>
       -- Split on whether j < queries.length (hash was actually queried)
-      by_cases hj_in : List.findIdx (fun x => decide (x = Sum.inr (mf, tf))) queries < queries.length
+      by_cases hj_in :
+        List.findIdx (fun x => decide (x = Sum.inr (mf, tf))) queries < queries.length
       · -- Hash WAS queried: use mapGameRealOracle_finalMap_lookup
         simp only [hj_in, ↓reduceIte]
         set signMsgs := List.filterMap (fun q => match q with
@@ -2093,7 +2111,7 @@ private theorem lazy_run_stmt_eq_mapGame_real_run_stmt_of_no_reuse {R : Effectiv
         | false =>
           have h_lookup := mapGameRealOracle_finalMap_lookup P Msg A n w y rs ch
             queries mf tf zf finalMap h_result hj hj_in h_signed
-          simp only [h_lookup, ↓reduceIte]
+          simp only [h_lookup]
       · -- Hash was NOT queried: both sides are none
         simp only [hj_in, ↓reduceIte]
         -- LHS: match assocLookup ... with | some c => ... | none => none = none
