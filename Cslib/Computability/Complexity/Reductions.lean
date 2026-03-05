@@ -65,15 +65,17 @@ end
 
 open Turing SingleTapeTM
 
-variable {Symbol : Type} [Inhabited Symbol] [Fintype Symbol]
+variable {Symbol : Type}
 
-set_option linter.unusedFintypeInType false in
 /-- `≤ₚ` is reflexive: every language reduces to itself via the identity. -/
 theorem PolyTimeReduces.refl
+    (hInhabited : Inhabited Symbol)
+    (hFintype : Fintype Symbol)
     (L : Set (List Symbol)) : PolyTimeReduces L L :=
+  let _ : Inhabited Symbol := hInhabited
+  let _ : Fintype Symbol := hFintype
   ⟨id, ⟨PolyTimeComputable.id⟩, fun _ => Iff.rfl⟩
 
-set_option linter.unusedFintypeInType false in
 /-- `≤ₚ` is transitive: if `L₁ ≤ₚ L₂` and `L₂ ≤ₚ L₃` then `L₁ ≤ₚ L₃`. -/
 theorem PolyTimeReduces.trans
     {L₁ L₂ L₃ : Set (List Symbol)}
@@ -82,10 +84,11 @@ theorem PolyTimeReduces.trans
     PolyTimeReduces L₁ L₃ := by
   obtain ⟨f, ⟨hf⟩, hf_mem⟩ := h₁₂
   obtain ⟨g, ⟨hg⟩, hg_mem⟩ := h₂₃
+  let _ : Inhabited Symbol := hf.toTimeComputable.tm.SymbolInhabited
+  let _ : Fintype Symbol := hf.toTimeComputable.tm.SymbolFintype
   exact ⟨g ∘ f, ⟨hf.comp hg⟩,
     fun x => (hf_mem x).trans (hg_mem (f x))⟩
 
-set_option linter.unusedFintypeInType false in
 /-- If `L₁ ≤ₚ L₂` and `L₂ ∈ P` then `L₁ ∈ P`. -/
 theorem PolyTimeReduces.mem_ComplexityP
     {L₁ L₂ : Set (List Symbol)}
@@ -94,11 +97,12 @@ theorem PolyTimeReduces.mem_ComplexityP
     L₁ ∈ ComplexityP := by
   obtain ⟨f, ⟨hf⟩, hf_mem⟩ := hred
   obtain ⟨g, ⟨hg⟩, hg_dec⟩ := hL₂
+  let _ : Inhabited Symbol := hf.toTimeComputable.tm.SymbolInhabited
+  let _ : Fintype Symbol := hf.toTimeComputable.tm.SymbolFintype
   refine ⟨g ∘ f, ⟨hf.comp hg⟩, fun x => ?_⟩
   simp only [Function.comp]
   exact (hf_mem x).trans (hg_dec (f x))
 
-set_option linter.unusedFintypeInType false in
 /-- If any NP-complete language is in P, then P = NP.
 
 This is the fundamental theorem connecting NP-completeness to the
