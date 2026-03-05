@@ -27,7 +27,7 @@ and uses them to define NP-hardness and NP-completeness.
 * `PolyTimeReduces.refl` — reflexivity
 * `PolyTimeReduces.trans` — transitivity
 * `PolyTimeReduces.mem_ComplexityP` — downward closure under P
-* `NPComplete.p_eq_np` — if any NP-complete language is in P then P = NP
+* `NPHard.p_eq_np` — if any NP-hard language is in P then P = NP
 
 ## References
 
@@ -69,11 +69,10 @@ variable {Symbol : Type}
 
 /-- `≤ₚ` is reflexive: every language reduces to itself via the identity. -/
 theorem PolyTimeReduces.refl
-    (hInhabited : Inhabited Symbol)
-    (hFintype : Fintype Symbol)
+    [Inhabited Symbol]
+    [Finite Symbol]
     (L : Set (List Symbol)) : PolyTimeReduces L L :=
-  let _ : Inhabited Symbol := hInhabited
-  let _ : Fintype Symbol := hFintype
+  let _ : Fintype Symbol := Fintype.ofFinite Symbol
   ⟨id, ⟨PolyTimeComputable.id⟩, fun _ => Iff.rfl⟩
 
 /-- `≤ₚ` is transitive: if `L₁ ≤ₚ L₂` and `L₂ ≤ₚ L₃` then `L₁ ≤ₚ L₃`. -/
@@ -103,16 +102,16 @@ theorem PolyTimeReduces.mem_ComplexityP
   simp only [Function.comp]
   exact (hf_mem x).trans (hg_dec (f x))
 
-/-- If any NP-complete language is in P, then P = NP.
+/-- If any NP-hard language is in P, then P = NP.
 
 This is the fundamental theorem connecting NP-completeness to the
 P vs NP question. -/
-theorem NPComplete.p_eq_np
+theorem NPHard.p_eq_np
     {L : Set (List Symbol)}
-    (hL : NPComplete L)
+    (hL : NPHard L)
     (hP : L ∈ ComplexityP (Symbol := Symbol)) :
     ComplexityP (Symbol := Symbol) = ComplexityNP := by
   apply Set.eq_of_subset_of_subset
   · exact ComplexityP_subset_ComplexityNP
   · intro L' hL'
-    exact (hL.1 L' hL').mem_ComplexityP hP
+    exact (hL L' hL').mem_ComplexityP hP
