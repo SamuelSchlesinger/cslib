@@ -28,7 +28,9 @@ public import Cslib.Computability.Circuits.Formula.Basic
 public import Cslib.Computability.Circuits.Formula.Measures
 public import Cslib.Computability.Circuits.Formula.Std
 public import Cslib.Computability.Complexity.CircuitHierarchy
+public import Cslib.Computability.Complexity.Classes
 public import Cslib.Computability.Complexity.NonUniform
+public import Cslib.Computability.Complexity.Reductions
 public import Cslib.Computability.Complexity.Space
 public import Cslib.Computability.Languages.Congruences.BuchiCongruence
 public import Cslib.Computability.Languages.Congruences.RightCongruence
@@ -38,8 +40,6 @@ public import Cslib.Computability.Languages.OmegaLanguage
 public import Cslib.Computability.Languages.OmegaRegularLanguage
 public import Cslib.Computability.Languages.RegularLanguage
 public import Cslib.Computability.Machines.SingleTapeTuring.Basic
-public import Cslib.Computability.Complexity.Classes
-public import Cslib.Computability.Complexity.Reductions
 public import Cslib.Computability.URM.Basic
 public import Cslib.Computability.URM.Computable
 public import Cslib.Computability.URM.Defs
@@ -53,13 +53,13 @@ public import Cslib.Crypto.Protocols.PerfectSecrecy.Internal.OneTimePad
 public import Cslib.Crypto.Protocols.PerfectSecrecy.Internal.PerfectSecrecy
 public import Cslib.Crypto.Protocols.PerfectSecrecy.OneTimePad
 public import Cslib.Crypto.Protocols.PerfectSecrecy.PMFUtilities
+public import Cslib.Cryptography.Assumptions.DiscreteLog
 public import Cslib.Cryptography.Foundations.Indistinguishability
 public import Cslib.Cryptography.Foundations.Negligible
 public import Cslib.Cryptography.Foundations.OracleInteraction
 public import Cslib.Cryptography.Foundations.PolyTimeDistinguisher
 public import Cslib.Cryptography.Foundations.RandomOracle
 public import Cslib.Cryptography.Foundations.SecurityGame
-public import Cslib.Cryptography.Assumptions.DiscreteLog
 public import Cslib.Cryptography.Primitives.Commitment
 public import Cslib.Cryptography.Primitives.Encryption
 public import Cslib.Cryptography.Primitives.HashFunction
