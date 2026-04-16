@@ -197,10 +197,19 @@ noncomputable def ROM_EUF_CMA_Game {R : EffectiveRelation}
           ((A.interact n y).runWithState q (romCmaOracle P Msg n w y rs Hs) []))
 
 /-- A **relation solver** is an adversary that attempts to find a
-witness given a statement. -/
+witness given a statement, using explicit internal randomness. -/
 structure RelationSolver (R : EffectiveRelation) where
-  /-- Given a statement, attempt to find a witness. -/
-  find : (n : ℕ) → R.Statement n → R.Witness n
+  /-- Solver randomness at security level `n`. -/
+  Randomness : ℕ → Type
+  /-- Solver randomness is finite. -/
+  randomnessFintype : ∀ n, Fintype (Randomness n)
+  /-- Solver randomness is nonempty. -/
+  randomnessNonempty : ∀ n, Nonempty (Randomness n)
+  /-- Given a statement and solver coins, attempt to find a witness. -/
+  find : (n : ℕ) → R.Statement n → Randomness n → R.Witness n
+
+attribute [instance] RelationSolver.randomnessFintype
+  RelationSolver.randomnessNonempty
 
 /-- The **relation hardness game**: the challenger samples a witness `w`
 uniformly, computes the statement `y = keyOf w`, and gives `y` to the
@@ -213,7 +222,7 @@ noncomputable def RelationGame (R : EffectiveRelation)
     [∀ n, Fintype (R.Witness n)] [∀ n, Nonempty (R.Witness n)]
     [∀ n (w : R.Witness n) (y : R.Statement n), Decidable (R.relation n w y)] :
     SecurityGame (RelationSolver R) where
-  advantage B n := uniformExpect (R.Witness n) (fun w =>
-    boolToReal (decide (R.relation n (B.find n (kg.keyOf n w)) (kg.keyOf n w))))
+  advantage B n := uniformExpect (R.Witness n × B.Randomness n) (fun ⟨w, r⟩ =>
+    boolToReal (decide (R.relation n (B.find n (kg.keyOf n w) r) (kg.keyOf n w))))
 
 end

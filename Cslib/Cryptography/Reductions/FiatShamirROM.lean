@@ -504,7 +504,7 @@ The following definitions implement the Map-based game hop chain:
 The forking lemma is applied to MapGame1_HVZK. -/
 
 /-- Map state type: association list from `(Msg × Commitment)` to `Challenge`. -/
-private abbrev MapState {R : EffectiveRelation}
+abbrev MapState {R : EffectiveRelation}
     (P : SigmaProtocol R) (Msg : ℕ → Type) (n : ℕ) :=
   List ((Msg n × P.Commitment n) × P.Challenge n)
 
@@ -817,7 +817,7 @@ private noncomputable def lazyRom_advantage {R : EffectiveRelation}
 
 /-- Oracle for MapGame1_HVZK: signing uses HVZK simulator, always uses
 `ch_i`, and inserts into Map. Hash oracle checks Map for consistency. -/
-private noncomputable def mapGame1HvzkOracle {R : EffectiveRelation}
+noncomputable def mapGame1HvzkOracle {R : EffectiveRelation}
     (P : SigmaProtocol R) (Msg : ℕ → Type)
     [∀ n, DecidableEq (Msg n)]
     (hvzk : P.SpecialHVZK) (n : ℕ) (q : ℕ)
@@ -840,7 +840,7 @@ private noncomputable def mapGame1HvzkOracle {R : EffectiveRelation}
 
 /-- Execute MapGame1_HVZK: run the adversary with the Map-based HVZK oracle,
 then post-process to extract forgery and check verification. -/
-private noncomputable def mapGame1_hvzk_run_stmt {R : EffectiveRelation}
+noncomputable def mapGame1_hvzk_run_stmt {R : EffectiveRelation}
     (P : SigmaProtocol R) (Msg : ℕ → Type)
     [∀ n, DecidableEq (Msg n)]
     (hvzk : P.SpecialHVZK)
@@ -1006,6 +1006,7 @@ private theorem mapGame_real_eq_mapGame1_hvzk {R : EffectiveRelation}
         -- Hash query: result is independent of per-step randomness s
         simp only [mapGameRealOracle, mapGame1HvzkOracle]
         rw [uniformExpect_const, uniformExpect_const]
+        rfl
       | inl m =>
         -- Sign query: real prover ↔ HVZK simulator by sim_distribution
         simp only [mapGameRealOracle, mapGame1HvzkOracle]
@@ -1511,11 +1512,10 @@ private theorem lazyCommitReuse_bound {R : EffectiveRelation}
       rw [h_zero, uniformExpect_const]
       have hδ_nonneg : 0 ≤ δ n := by
         let r0 : P.ProverRandomness n := (P.proverRandomnessNonempty n).some
-        have htmp := h_unpred n (Classical.arbitrary (R.Witness n))
-          (kg.keyOf n (Classical.arbitrary (R.Witness n)))
-          (P.commit n (Classical.arbitrary (R.Witness n))
-            (kg.keyOf n (Classical.arbitrary (R.Witness n))) r0)
-          (kg.keyOf_valid n (Classical.arbitrary (R.Witness n)))
+        let w0 : R.Witness n := (show Nonempty (R.Witness n) from inferInstance).some
+        have htmp := h_unpred n w0 (kg.keyOf n w0)
+          (P.commit n w0 (kg.keyOf n w0) r0)
+          (kg.keyOf_valid n w0)
         exact le_trans (uniformExpect_nonneg _ (fun _ => by split <;> norm_num)) htmp
       exact hδ_nonneg
   calc uniformExpect
@@ -2720,9 +2720,135 @@ private lemma mapGame1_hvzk_run_stmt_verify {R : EffectiveRelation}
       · exact absurd h nofun
     · exact absurd h nofun
 
-/-- **Fork extraction (Map-based)**: when forking succeeds, special
-soundness extracts a valid witness. -/
-private theorem forkExtraction_le_advR_map {R : EffectiveRelation}
+/-- When the two forked runs both succeed at the same index with distinct
+challenges, special soundness extracts a valid witness. -/
+private theorem mapGame1_hvzk_fork_sound {R : EffectiveRelation}
+    (P : SigmaProtocol R) (Msg : ℕ → Type)
+    [∀ n, DecidableEq (Msg n)]
+    [∀ n, Nonempty (Msg n)]
+    [∀ n, Fintype (R.Witness n)] [∀ n, Nonempty (R.Witness n)]
+    [∀ n (w : R.Witness n) (y : R.Statement n), Decidable (R.relation n w y)]
+    (_kg : R.WithKeyGen)
+    (ss : P.SpecialSoundness) (hvzk : P.SpecialHVZK)
+    (A : ROM_EUF_CMA_Adversary P Msg) (n : ℕ)
+    [Fintype (hvzk.SimRandomness n)] [Nonempty (hvzk.SimRandomness n)]
+    [Fintype (P.Challenge n)] [Nonempty (P.Challenge n)]
+    [DecidableEq (P.Challenge n)] :
+    ∀ (y : R.Statement n) (sr : Fin (A.numQueries n) → hvzk.SimRandomness n)
+      (ch₁ ch₂ : Fin (A.numQueries n) → P.Challenge n)
+      {j : Fin (A.numQueries n)} {mf₁ mf₂ : Msg n}
+      {tf₁ tf₂ : P.Commitment n} {zf₁ zf₂ : P.Response n},
+      mapGame1_hvzk_run_stmt P Msg hvzk A n y sr ch₁ = some (j, (mf₁, tf₁, zf₁)) →
+      mapGame1_hvzk_run_stmt P Msg hvzk A n y sr
+        (fun i => if i.val < j.val then ch₁ i else ch₂ i) =
+        some (j, (mf₂, tf₂, zf₂)) →
+      ch₁ j ≠ ch₂ j →
+      R.relation n (ss.extract n y tf₁ (ch₁ j) zf₁ (ch₂ j) zf₂) y := by
+  intro y sr ch₁ ch₂ j mf₁ mf₂ tf₁ tf₂ zf₁ zf₂ h₁ h₂ h_neq
+  have hv₁ := mapGame1_hvzk_run_stmt_verify P Msg hvzk A n y sr ch₁ h₁
+  have hv₂ := mapGame1_hvzk_run_stmt_verify P Msg hvzk A n y sr
+    (fun i => if i.val < j.val then ch₁ i else ch₂ i) h₂
+  have h_ch_at_j : (fun i : Fin (A.numQueries n) =>
+      if i.val < j.val then ch₁ i else ch₂ i) j = ch₂ j :=
+    if_neg (Nat.lt_irrefl _)
+  rw [h_ch_at_j] at hv₂
+  have htf : tf₁ = tf₂ := by
+    obtain ⟨queries₁, _, hrun₁, hle₁, hget₁⟩ :=
+      mapGame1_hvzk_run_stmt_data P Msg hvzk A n y sr ch₁ h₁
+    set ch_fork : Fin (A.numQueries n) → P.Challenge n :=
+      fun i => if i.val < j.val then ch₁ i else ch₂ i
+    obtain ⟨queries₂, _, hrun₂, hle₂, hget₂⟩ :=
+      mapGame1_hvzk_run_stmt_data P Msg hvzk A n y sr ch_fork h₂
+    have h_oracle_agree : ∀ (i : Fin (A.numQueries n)), i.val < j.val →
+        mapGame1HvzkOracle P Msg hvzk n (A.numQueries n) y sr ch₁ i =
+        mapGame1HvzkOracle P Msg hvzk n (A.numQueries n) y sr ch_fork i := by
+      intro i hi
+      have h_ch_eq : ch_fork i = ch₁ i := if_pos hi
+      funext map qry
+      unfold mapGame1HvzkOracle
+      rw [h_ch_eq]
+    by_cases hjlt : j.val < queries₁.length
+    · have hjlt₂ : j.val < queries₂.length :=
+        OracleInteraction.runWithState_prefix_implies_length
+          (A.interact n y) (A.numQueries n)
+          (mapGame1HvzkOracle P Msg hvzk n (A.numQueries n) y sr ch₁)
+          (mapGame1HvzkOracle P Msg hvzk n (A.numQueries n) y sr ch_fork)
+          [] j.val h_oracle_agree hrun₁ hrun₂ hjlt
+      have hq_eq : queries₁[j.val] = queries₂[j.val] :=
+        OracleInteraction.runWithState_prefix_query_eq
+          (A.interact n y) (A.numQueries n)
+          (mapGame1HvzkOracle P Msg hvzk n (A.numQueries n) y sr ch₁)
+          (mapGame1HvzkOracle P Msg hvzk n (A.numQueries n) y sr ch_fork)
+          [] j.val h_oracle_agree hrun₁ hrun₂ hjlt hjlt₂
+      have hq₁ : queries₁[j.val] = .inr (mf₁, tf₁) := hget₁ hjlt
+      have hq₂ : queries₂[j.val] = .inr (mf₂, tf₂) := hget₂ hjlt₂
+      have := hq₁.symm.trans (hq_eq.trans hq₂)
+      exact (Prod.mk.inj (Sum.inr.inj this)).2
+    · have h_agree_all : ∀ (i : Fin (A.numQueries n)),
+          i.val < queries₁.length →
+          mapGame1HvzkOracle P Msg hvzk n (A.numQueries n) y sr ch₁ i =
+          mapGame1HvzkOracle P Msg hvzk n (A.numQueries n) y sr ch_fork i := by
+        intro i hi
+        exact h_oracle_agree i (lt_of_lt_of_le hi (Nat.le_of_not_lt hjlt))
+      have hrun₂' :=
+        OracleInteraction.runWithState_det_prefix
+          (A.interact n y) (A.numQueries n)
+          (mapGame1HvzkOracle P Msg hvzk n (A.numQueries n) y sr ch₁)
+          (mapGame1HvzkOracle P Msg hvzk n (A.numQueries n) y sr ch_fork)
+          [] hrun₁ h_agree_all
+      rw [hrun₂'] at hrun₂
+      have hinj := Option.some.inj hrun₂
+      have hrest := (Prod.mk.inj hinj).2
+      have hforg := (Prod.mk.inj hrest).1
+      exact (Prod.mk.inj (Prod.mk.inj hforg).2).1
+  rw [← htf] at hv₂
+  exact ss.soundness n y tf₁ (ch₁ j) zf₁ (ch₂ j) zf₂ h_neq hv₁ hv₂
+
+/-- The explicit forking-based relation solver used in the Fiat-Shamir
+reduction. -/
+noncomputable def mapGame1_hvzk_relationSolver {R : EffectiveRelation}
+    (P : SigmaProtocol R) (Msg : ℕ → Type)
+    [∀ n, DecidableEq (Msg n)]
+    [∀ n, Nonempty (Msg n)]
+    [∀ n, Fintype (R.Witness n)] [∀ n, Nonempty (R.Witness n)]
+    [∀ n (w : R.Witness n) (y : R.Statement n), Decidable (R.relation n w y)]
+    (_kg : R.WithKeyGen)
+    (ss : P.SpecialSoundness) (hvzk : P.SpecialHVZK)
+    (A : ROM_EUF_CMA_Adversary P Msg) : RelationSolver R where
+  Randomness n :=
+    (Fin (A.numQueries n) → hvzk.SimRandomness n) ×
+      (Fin (A.numQueries n) → P.Challenge n) ×
+      (Fin (A.numQueries n) → P.Challenge n)
+  randomnessFintype n := by
+    letI := hvzk.simRandomnessFintype n
+    letI := P.challengeFintype n
+    infer_instance
+  randomnessNonempty n := by
+    letI := hvzk.simRandomnessNonempty n
+    letI := P.challengeNonempty n
+    infer_instance
+  find n y coins :=
+    let fallback : R.Witness n := (show Nonempty (R.Witness n) from inferInstance).some
+    let sr := coins.1
+    let ch₁ := coins.2.1
+    let ch₂ := coins.2.2
+    match h₁ : mapGame1_hvzk_run_stmt P Msg hvzk A n y sr ch₁ with
+    | none => fallback
+    | some (j, (mf₁, tf₁, zf₁)) =>
+      let ch_fork : Fin (A.numQueries n) → P.Challenge n :=
+        fun i => if i.val < j.val then ch₁ i else ch₂ i
+      match h₂ : mapGame1_hvzk_run_stmt P Msg hvzk A n y sr ch_fork with
+      | none => fallback
+      | some (j', (mf₂, tf₂, zf₂)) =>
+        if h : j = j' ∧ ch₁ j ≠ ch₂ j then
+          ss.extract n y tf₁ (ch₁ j) zf₁ (ch₂ j) zf₂
+        else
+          fallback
+
+/-- The explicit relation solver succeeds whenever the forking experiment
+produces two accepting transcripts at the same query with distinct
+challenges. -/
+private theorem forkProb_le_relationGame_advantage_mapGame1_hvzk {R : EffectiveRelation}
     (P : SigmaProtocol R) (Msg : ℕ → Type)
     [∀ n, DecidableEq (Msg n)]
     [∀ n, Nonempty (Msg n)]
@@ -2734,95 +2860,29 @@ private theorem forkExtraction_le_advR_map {R : EffectiveRelation}
     [Fintype (hvzk.SimRandomness n)] [Nonempty (hvzk.SimRandomness n)]
     [Fintype (P.Challenge n)] [Nonempty (P.Challenge n)]
     [DecidableEq (P.Challenge n)] :
-    ∃ find_n : R.Statement n → R.Witness n,
-      forkProb
-        (R.Witness n × (Fin (A.numQueries n) → hvzk.SimRandomness n))
-        (P.Challenge n) (A.numQueries n)
-        (mapGame1_hvzk_run P Msg kg hvzk A n) ≤
-      uniformExpect (R.Witness n) (fun w =>
-        boolToReal (decide (R.relation n (find_n (kg.keyOf n w)) (kg.keyOf n w)))) := by
-  set q := A.numQueries n
-  have fork_sound : ∀ (y : R.Statement n) (sr : Fin q → hvzk.SimRandomness n)
-      (ch₁ ch₂ : Fin q → P.Challenge n)
-      {j : Fin q} {mf₁ mf₂ : Msg n} {tf₁ tf₂ : P.Commitment n}
-      {zf₁ zf₂ : P.Response n},
-      mapGame1_hvzk_run_stmt P Msg hvzk A n y sr ch₁ = some (j, (mf₁, tf₁, zf₁)) →
-      mapGame1_hvzk_run_stmt P Msg hvzk A n y sr
-        (fun i => if i.val < j.val then ch₁ i else ch₂ i) =
-        some (j, (mf₂, tf₂, zf₂)) →
-      ch₁ j ≠ ch₂ j →
-      R.relation n (ss.extract n y tf₁ (ch₁ j) zf₁ (ch₂ j) zf₂) y := by
-    intro y sr ch₁ ch₂ j mf₁ mf₂ tf₁ tf₂ zf₁ zf₂ h₁ h₂ h_neq
-    have hv₁ := mapGame1_hvzk_run_stmt_verify P Msg hvzk A n y sr ch₁ h₁
-    have hv₂ := mapGame1_hvzk_run_stmt_verify P Msg hvzk A n y sr
-      (fun i => if i.val < j.val then ch₁ i else ch₂ i) h₂
-    have h_ch_at_j : (fun i : Fin (A.numQueries n) =>
-        if i.val < j.val then ch₁ i else ch₂ i) j = ch₂ j :=
-      if_neg (Nat.lt_irrefl _)
-    rw [h_ch_at_j] at hv₂
-    have htf : tf₁ = tf₂ := by
-      obtain ⟨queries₁, _, hrun₁, hle₁, hget₁⟩ :=
-        mapGame1_hvzk_run_stmt_data P Msg hvzk A n y sr ch₁ h₁
-      set ch_fork : Fin (A.numQueries n) → P.Challenge n :=
-        fun i => if i.val < j.val then ch₁ i else ch₂ i
-      obtain ⟨queries₂, _, hrun₂, hle₂, hget₂⟩ :=
-        mapGame1_hvzk_run_stmt_data P Msg hvzk A n y sr ch_fork h₂
-      have h_oracle_agree : ∀ (i : Fin (A.numQueries n)), i.val < j.val →
-          mapGame1HvzkOracle P Msg hvzk n (A.numQueries n) y sr ch₁ i =
-          mapGame1HvzkOracle P Msg hvzk n (A.numQueries n) y sr ch_fork i := by
-        intro i hi
-        have h_ch_eq : ch_fork i = ch₁ i := if_pos hi
-        funext map qry
-        unfold mapGame1HvzkOracle
-        rw [h_ch_eq]
-      by_cases hjlt : j.val < queries₁.length
-      · have hjlt₂ : j.val < queries₂.length :=
-          OracleInteraction.runWithState_prefix_implies_length
-            (A.interact n y) (A.numQueries n)
-            (mapGame1HvzkOracle P Msg hvzk n (A.numQueries n) y sr ch₁)
-            (mapGame1HvzkOracle P Msg hvzk n (A.numQueries n) y sr ch_fork)
-            [] j.val h_oracle_agree hrun₁ hrun₂ hjlt
-        have hq_eq : queries₁[j.val] = queries₂[j.val] :=
-          OracleInteraction.runWithState_prefix_query_eq
-            (A.interact n y) (A.numQueries n)
-            (mapGame1HvzkOracle P Msg hvzk n (A.numQueries n) y sr ch₁)
-            (mapGame1HvzkOracle P Msg hvzk n (A.numQueries n) y sr ch_fork)
-            [] j.val h_oracle_agree hrun₁ hrun₂ hjlt hjlt₂
-        have hq₁ : queries₁[j.val] = .inr (mf₁, tf₁) := hget₁ hjlt
-        have hq₂ : queries₂[j.val] = .inr (mf₂, tf₂) := hget₂ hjlt₂
-        have := hq₁.symm.trans (hq_eq.trans hq₂)
-        exact (Prod.mk.inj (Sum.inr.inj this)).2
-      · have h_agree_all : ∀ (i : Fin (A.numQueries n)),
-            i.val < queries₁.length →
-            mapGame1HvzkOracle P Msg hvzk n (A.numQueries n) y sr ch₁ i =
-            mapGame1HvzkOracle P Msg hvzk n (A.numQueries n) y sr ch_fork i := by
-          intro i hi
-          exact h_oracle_agree i (lt_of_lt_of_le hi (Nat.le_of_not_lt hjlt))
-        have hrun₂' :=
-          OracleInteraction.runWithState_det_prefix
-            (A.interact n y) (A.numQueries n)
-            (mapGame1HvzkOracle P Msg hvzk n (A.numQueries n) y sr ch₁)
-            (mapGame1HvzkOracle P Msg hvzk n (A.numQueries n) y sr ch_fork)
-            [] hrun₁ h_agree_all
-        rw [hrun₂'] at hrun₂
-        have hinj := Option.some.inj hrun₂
-        have hrest := (Prod.mk.inj hinj).2
-        have hforg := (Prod.mk.inj hrest).1
-        exact (Prod.mk.inj (Prod.mk.inj hforg).2).1
-    rw [← htf] at hv₂
-    exact ss.soundness n y tf₁ (ch₁ j) zf₁ (ch₂ j) zf₂ h_neq hv₁ hv₂
-  let find_n : R.Statement n → R.Witness n := fun y =>
-    Classical.epsilon (fun w' => R.relation n w' y)
-  refine ⟨find_n, ?_⟩
-  have h_mono : forkProb
-      (R.Witness n × (Fin q → hvzk.SimRandomness n))
-      (P.Challenge n) q
+    forkProb
+      (R.Witness n × (Fin (A.numQueries n) → hvzk.SimRandomness n))
+      (P.Challenge n) (A.numQueries n)
       (mapGame1_hvzk_run P Msg kg hvzk A n) ≤
-    uniformExpect ((R.Witness n × (Fin q → hvzk.SimRandomness n)) ×
-      (Fin q → P.Challenge n) × (Fin q → P.Challenge n))
-      (fun p => boolToReal
-        (decide (R.relation n (find_n (kg.keyOf n p.1.1))
-          (kg.keyOf n p.1.1)))) := by
+    (RelationGame R kg).advantage
+      (mapGame1_hvzk_relationSolver P Msg kg ss hvzk A) n := by
+  set q := A.numQueries n
+  let B := mapGame1_hvzk_relationSolver P Msg kg ss hvzk A
+  let e :
+      ((R.Witness n × (Fin q → hvzk.SimRandomness n)) ×
+        ((Fin q → P.Challenge n) × (Fin q → P.Challenge n))) ≃
+      (R.Witness n × B.Randomness n) :=
+    Equiv.prodAssoc (R.Witness n) (Fin q → hvzk.SimRandomness n)
+      ((Fin q → P.Challenge n) × (Fin q → P.Challenge n))
+  let f : R.Witness n × B.Randomness n → ℝ :=
+    fun x => boolToReal (decide (R.relation n
+      (B.find n (kg.keyOf n x.1) x.2) (kg.keyOf n x.1)))
+  have h_mono :
+      forkProb (R.Witness n × (Fin q → hvzk.SimRandomness n))
+        (P.Challenge n) q (mapGame1_hvzk_run P Msg kg hvzk A n) ≤
+      uniformExpect ((R.Witness n × (Fin q → hvzk.SimRandomness n)) ×
+        ((Fin q → P.Challenge n) × (Fin q → P.Challenge n)))
+        (f ∘ e) := by
     unfold forkProb uniformExpect
     apply Finset.sum_le_sum
     intro ⟨⟨w, sr⟩, ch₁, ch₂⟩ _
@@ -2831,7 +2891,7 @@ private theorem forkExtraction_le_advR_map {R : EffectiveRelation}
     rcases h_run₁ : mapGame1_hvzk_run_stmt P Msg hvzk A n (kg.keyOf n w) sr ch₁
       with _ | ⟨j, mf₁, tf₁, zf₁⟩
     · exact boolToReal_nonneg _
-    · dsimp only []
+    · dsimp only [B, mapGame1_hvzk_relationSolver]
       rcases h_run₂ : mapGame1_hvzk_run_stmt P Msg hvzk A n (kg.keyOf n w) sr
           (fun i => if i.val < j.val then ch₁ i else ch₂ i)
         with _ | ⟨j', mf₂, tf₂, zf₂⟩
@@ -2841,36 +2901,48 @@ private theorem forkExtraction_le_advR_map {R : EffectiveRelation}
           if_neg (Nat.lt_irrefl _)
         simp only [h_if]
         by_cases h_cond : j = j' ∧ ch₁ j ≠ ch₂ j
-        · obtain ⟨hjj', h_neq⟩ := h_cond; subst hjj'
-          have h_rel := fork_sound (kg.keyOf n w) sr ch₁ ch₂ h_run₁ h_run₂ h_neq
-          have h_eps := Classical.epsilon_spec
-            (p := fun w' => R.relation n w' (kg.keyOf n w)) ⟨_, h_rel⟩
-          have h_rel_find : R.relation n (find_n (kg.keyOf n w)) (kg.keyOf n w) := h_eps
-          have lhs_eq : boolToReal (decide (j = j ∧ ch₁ j ≠ ch₂ j)) = 1 := by
+        · obtain ⟨hjj', h_neq⟩ := h_cond
+          subst hjj'
+          have h_cond' : j = j ∧ ch₁ j ≠ ch₂ j := ⟨rfl, h_neq⟩
+          have h_rel := mapGame1_hvzk_fork_sound P Msg kg ss hvzk A n
+            (kg.keyOf n w) sr ch₁ ch₂ h_run₁ h_run₂ h_neq
+          have h_left : boolToReal (decide (j = j ∧ ch₁ j ≠ ch₂ j)) = 1 := by
             simp [boolToReal, h_neq]
-          have rhs_eq : boolToReal
-              (decide (R.relation n (find_n (kg.keyOf n w)) (kg.keyOf n w))) = 1 := by
-            simp [boolToReal, h_rel_find]
-          linarith
-        · have lhs_eq : boolToReal (decide (j = j' ∧ ch₁ j ≠ ch₂ j)) = 0 := by
+          rw [h_left]
+          have h_find :
+              B.find n (kg.keyOf n w) (sr, ch₁, ch₂) =
+                ss.extract n (kg.keyOf n w) tf₁ (ch₁ j) zf₁ (ch₂ j) zf₂ := by
+            dsimp [B, mapGame1_hvzk_relationSolver]
+            rw [h_run₁]
+            simp only
+            rw [h_run₂]
+            simp [h_cond']
+          have h_goal :
+              1 ≤ boolToReal (decide (R.relation n
+                (B.find n (kg.keyOf n w) (sr, ch₁, ch₂))
+                (kg.keyOf n w))) := by
+            rw [h_find]
+            simp [boolToReal, h_rel]
+          simpa [Function.comp, e, f] using h_goal
+        · have h_left : boolToReal (decide (j = j' ∧ ch₁ j ≠ ch₂ j)) = 0 := by
             simp [boolToReal, h_cond]
-          linarith [boolToReal_nonneg
-            (decide (R.relation n (find_n (kg.keyOf n w))
-              (kg.keyOf n w)))]
-  have h_eq : uniformExpect ((R.Witness n × (Fin q → hvzk.SimRandomness n)) ×
-      (Fin q → P.Challenge n) × (Fin q → P.Challenge n))
-      (fun p => boolToReal (decide (R.relation n (find_n (kg.keyOf n p.1.1)) (kg.keyOf n p.1.1)))) =
-    uniformExpect (R.Witness n) (fun w =>
-      boolToReal (decide (R.relation n (find_n (kg.keyOf n w)) (kg.keyOf n w)))) := by
-    trans uniformExpect (R.Witness n × (Fin q → hvzk.SimRandomness n))
-      (fun (x : R.Witness n × (Fin q → hvzk.SimRandomness n)) =>
-        boolToReal (decide (R.relation n (find_n (kg.keyOf n x.1)) (kg.keyOf n x.1))))
-    · exact uniformExpect_prod_ignore_snd
-        (fun (x : R.Witness n × (Fin q → hvzk.SimRandomness n)) =>
-          boolToReal (decide (R.relation n (find_n (kg.keyOf n x.1)) (kg.keyOf n x.1))))
-    · exact uniformExpect_prod_ignore_snd
-        (fun w => boolToReal (decide (R.relation n (find_n (kg.keyOf n w)) (kg.keyOf n w))))
-  linarith
+          rw [h_left]
+          simpa [Function.comp, e, f] using
+            (boolToReal_nonneg
+              (decide (R.relation n
+                (B.find n (kg.keyOf n w) (sr, ch₁, ch₂))
+                (kg.keyOf n w))))
+  calc
+    forkProb (R.Witness n × (Fin q → hvzk.SimRandomness n))
+        (P.Challenge n) q (mapGame1_hvzk_run P Msg kg hvzk A n) ≤
+      uniformExpect ((R.Witness n × (Fin q → hvzk.SimRandomness n)) ×
+        ((Fin q → P.Challenge n) × (Fin q → P.Challenge n)))
+        (f ∘ e) := h_mono
+    _ = uniformExpect
+        (R.Witness n × B.Randomness n)
+        f := uniformExpect_congr e f
+    _ = (RelationGame R kg).advantage B n := by
+        rfl
 
 /-- **Forking reduction for MapGame1_HVZK.** -/
 private theorem mapGame1_hvzk_forking_bound {R : EffectiveRelation}
@@ -2882,19 +2954,13 @@ private theorem mapGame1_hvzk_forking_bound {R : EffectiveRelation}
     (kg : R.WithKeyGen)
     (ss : P.SpecialSoundness) (hvzk : P.SpecialHVZK)
     (A : ROM_EUF_CMA_Adversary P Msg) :
-    ∃ B : RelationSolver R, ∀ n,
+    ∀ n,
       mapGame1_hvzk_advantage P Msg kg hvzk A n ≤
         Real.sqrt ((A.numQueries n : ℝ) *
-          (RelationGame R kg).advantage B n +
+          (RelationGame R kg).advantage
+            (mapGame1_hvzk_relationSolver P Msg kg ss hvzk A) n +
           (A.numQueries n : ℝ) /
             Fintype.card (P.Challenge n)) := by
-  suffices per_n : ∀ n, ∃ find_n : R.Statement n → R.Witness n,
-      mapGame1_hvzk_advantage P Msg kg hvzk A n ≤
-        Real.sqrt ((A.numQueries n : ℝ) *
-          uniformExpect (R.Witness n) (fun w =>
-            boolToReal (decide (R.relation n (find_n (kg.keyOf n w)) (kg.keyOf n w)))) +
-          (A.numQueries n : ℝ) / Fintype.card (P.Challenge n)) by
-    exact ⟨⟨fun n => (per_n n).choose⟩, fun n => (per_n n).choose_spec⟩
   intro n
   letI := hvzk.simRandomnessFintype n
   letI := hvzk.simRandomnessNonempty n
@@ -2902,8 +2968,7 @@ private theorem mapGame1_hvzk_forking_bound {R : EffectiveRelation}
   letI := P.challengeNonempty n
   letI := P.challengeDecEq n
   by_cases hq : A.numQueries n = 0
-  · refine ⟨fun _ => Classical.arbitrary _, ?_⟩
-    have h_adv_le : mapGame1_hvzk_advantage P Msg kg hvzk A n ≤ 0 := by
+  · have h_adv_le : mapGame1_hvzk_advantage P Msg kg hvzk A n ≤ 0 := by
       change forkAcceptProb _ _ _ _ ≤ 0
       have h_nn := forkAcceptProb_nonneg
         (R.Witness n × (Fin (A.numQueries n) → hvzk.SimRandomness n))
@@ -2919,26 +2984,30 @@ private theorem mapGame1_hvzk_forking_bound {R : EffectiveRelation}
           (Fin (A.numQueries n) → P.Challenge n))
         (fun _ => (0 : ℝ))
       · apply uniformExpect_mono
-        intro ⟨⟨w, sr⟩, ch⟩; dsimp only []
+        intro ⟨⟨w, sr⟩, ch⟩
+        dsimp only []
         cases h_run : mapGame1_hvzk_run P Msg kg hvzk A n ⟨w, sr⟩ ch with
         | none => norm_num
         | some p => exact absurd p.1.isLt (by omega)
       · exact le_of_eq (uniformExpect_const _ 0)
-    linarith [Real.sqrt_nonneg ((A.numQueries n : ℝ) *
-      uniformExpect (R.Witness n) (fun w =>
-        boolToReal (decide (R.relation n
-          ((fun _ => Classical.arbitrary _) (kg.keyOf n w)) (kg.keyOf n w)))) +
-      (A.numQueries n : ℝ) / Fintype.card (P.Challenge n))]
+    have h_rhs_nonneg : 0 ≤
+        Real.sqrt ((A.numQueries n : ℝ) *
+          (RelationGame R kg).advantage
+            (mapGame1_hvzk_relationSolver P Msg kg ss hvzk A) n +
+          (A.numQueries n : ℝ) / Fintype.card (P.Challenge n)) := by
+      exact Real.sqrt_nonneg _
+    linarith
   · have hq_pos : 0 < A.numQueries n := by omega
     let Coins := R.Witness n × (Fin (A.numQueries n) → hvzk.SimRandomness n)
     let run := mapGame1_hvzk_run P Msg kg hvzk A n
     have h_fork := forking_lemma Coins (P.Challenge n) (A.numQueries n) run hq_pos
-    obtain ⟨find_n, h_extract⟩ := forkExtraction_le_advR_map P Msg kg ss hvzk A n
+    have h_rel :=
+      forkProb_le_relationGame_advantage_mapGame1_hvzk P Msg kg ss hvzk A n
     have h_rearrange :
         forkAcceptProb Coins (P.Challenge n) (A.numQueries n) run ^ 2 /
           (A.numQueries n : ℝ) ≤
-        uniformExpect (R.Witness n) (fun w =>
-          boolToReal (decide (R.relation n (find_n (kg.keyOf n w)) (kg.keyOf n w)))) +
+        (RelationGame R kg).advantage
+          (mapGame1_hvzk_relationSolver P Msg kg ss hvzk A) n +
         forkAcceptProb Coins (P.Challenge n) (A.numQueries n) run /
           Fintype.card (P.Challenge n) := by
       linarith
@@ -2946,21 +3015,19 @@ private theorem mapGame1_hvzk_forking_bound {R : EffectiveRelation}
     have h_acc_le1 := forkAcceptProb_le_one Coins (P.Challenge n) (A.numQueries n) run
     have h_Ch_pos : (0 : ℝ) < Fintype.card (P.Challenge n) :=
       Nat.cast_pos.mpr Fintype.card_pos
-    refine ⟨find_n, ?_⟩
     change forkAcceptProb Coins (P.Challenge n) (A.numQueries n) run ≤ _
     exact quadratic_sqrt_bound h_acc_nn h_acc_le1
       (Nat.cast_pos.mpr hq_pos) h_Ch_pos h_rearrange
 
-
-/-- **Concrete security bound for Fiat-Shamir in the ROM.**
+/- **Concrete security bound for Fiat-Shamir in the ROM.**
 
 If the Sigma protocol has special soundness, special HVZK, and
-`δ`-unpredictable commitments (Def 19.7, Boneh-Shoup), there exists
-a relation solver whose advantage, combined with the forking overhead,
+`δ`-unpredictable commitments (Def 19.7, Boneh-Shoup), the explicit
+Fiat-Shamir reduction has advantage which, combined with the forking overhead,
 bounds the ROM EUF-CMA advantage:
 
 $$\mathrm{Adv}_{\mathrm{ROM\text{-}EUF\text{-}CMA}}(A, n)
-  \le \sqrt{q \cdot \mathrm{Adv}_R(B, n) + q / |\mathcal{C}|}
+  \le \sqrt{q \cdot \mathrm{Adv}_R(B_A, n) + q / |\mathcal{C}|}
     + q^2 \cdot \delta$$
 
 where `q` is the total query bound and `|𝒞|` is the challenge space size.
@@ -2971,6 +3038,20 @@ where `q` is the total query bound and `|𝒞|` is the challenge space size.
 2. *Forking* (`mapGame1_hvzk_forking_bound`): In MapGame1_HVZK, the
    signing oracle doesn't use the witness. Forking lemma + special
    soundness extraction yields `acc ≤ √(q · Adv_R + q/|Ch|)`. -/
+/-- The **Fiat-Shamir reduction**: given a ROM EUF-CMA adversary `A`,
+construct the explicit randomized relation solver obtained from the
+forking lemma and special soundness extraction. -/
+noncomputable def fiatShamirReduction {R : EffectiveRelation}
+    (P : SigmaProtocol R) (Msg : ℕ → Type)
+    [∀ n, DecidableEq (Msg n)]
+    [∀ n, Fintype (Msg n)] [∀ n, Nonempty (Msg n)]
+    [∀ n, Fintype (R.Witness n)] [∀ n, Nonempty (R.Witness n)]
+    [∀ n (w : R.Witness n) (y : R.Statement n), Decidable (R.relation n w y)]
+    (kg : R.WithKeyGen)
+    (ss : P.SpecialSoundness) (hvzk : P.SpecialHVZK)
+    (A : ROM_EUF_CMA_Adversary P Msg) : RelationSolver R :=
+  mapGame1_hvzk_relationSolver P Msg kg ss hvzk A
+
 theorem fiatShamir_ROM_bound {R : EffectiveRelation}
     (P : SigmaProtocol R) (Msg : ℕ → Type)
     [∀ n, DecidableEq (Msg n)]
@@ -2982,38 +3063,26 @@ theorem fiatShamir_ROM_bound {R : EffectiveRelation}
     (A : ROM_EUF_CMA_Adversary P Msg)
     (δ : ℕ → ℝ)
     (h_unpred : P.UnpredictableCommitments δ) :
-    ∃ B : RelationSolver R, ∀ n,
+    ∀ n,
       (ROM_EUF_CMA_Game P Msg kg).advantage A n ≤
         Real.sqrt ((A.numQueries n : ℝ) *
-          (RelationGame R kg).advantage B n +
+          (RelationGame R kg).advantage
+            (fiatShamirReduction P Msg kg ss hvzk A) n +
           (A.numQueries n : ℝ) /
             Fintype.card (P.Challenge n)) +
         (A.numQueries n : ℝ) ^ 2 * δ n := by
-  obtain ⟨B, hB⟩ := mapGame1_hvzk_forking_bound P Msg kg ss hvzk A
-  exact ⟨B, fun n => by
-    have h_rom_le := rom_eq_mapGame1_hvzk_bound P Msg kg hvzk A n δ h_unpred
-    have h_fork := hB n
-    linarith⟩
-
-/-- The **Fiat-Shamir reduction**: given a ROM EUF-CMA adversary `A`,
-construct a relation solver via the forking lemma and special soundness
-extraction. In a concrete implementation, `B` runs `A` as a subroutine;
-if `A` is efficient, so is `B`.
-
-This is the adversary whose advantage appears in `fiatShamir_ROM_bound`
-and `fiatShamir_ROM_secure` (Boneh-Shoup §19.6.1). -/
-noncomputable def fiatShamirReduction {R : EffectiveRelation}
-    (P : SigmaProtocol R) (Msg : ℕ → Type)
-    [∀ n, DecidableEq (Msg n)]
-    [∀ n, Fintype (Msg n)] [∀ n, Nonempty (Msg n)]
-    [∀ n, Fintype (R.Witness n)] [∀ n, Nonempty (R.Witness n)]
-    [∀ n (w : R.Witness n) (y : R.Statement n), Decidable (R.relation n w y)]
-    (kg : R.WithKeyGen)
-    (ss : P.SpecialSoundness) (hvzk : P.SpecialHVZK)
-    (A : ROM_EUF_CMA_Adversary P Msg)
-    (δ : ℕ → ℝ)
-    (h_unpred : P.UnpredictableCommitments δ) : RelationSolver R :=
-  (fiatShamir_ROM_bound P Msg kg ss hvzk A δ h_unpred).choose
+  intro n
+  have h_rom_le := rom_eq_mapGame1_hvzk_bound P Msg kg hvzk A n δ h_unpred
+  have h_fork :
+      mapGame1_hvzk_advantage P Msg kg hvzk A n ≤
+        Real.sqrt ((A.numQueries n : ℝ) *
+          (RelationGame R kg).advantage
+            (fiatShamirReduction P Msg kg ss hvzk A) n +
+          (A.numQueries n : ℝ) /
+            Fintype.card (P.Challenge n)) := by
+    simpa [fiatShamirReduction] using
+      (mapGame1_hvzk_forking_bound P Msg kg ss hvzk A n)
+  linarith
 
 /-- **Asymptotic security of Fiat-Shamir in the ROM.**
 
@@ -3052,11 +3121,11 @@ theorem fiatShamir_ROM_secure {R : EffectiveRelation}
     (hChallenge : Negligible (fun n => 1 / (Fintype.card (P.Challenge n) : ℝ)))
     (A : ROM_EUF_CMA_Adversary P Msg)
     (hPoly : PolynomiallyBounded (fun n => (A.numQueries n : ℝ)))
-    (hAdm : Admissible (fiatShamirReduction P Msg kg ss hvzk A δ h_unpred)) :
+    (hAdm : Admissible (fiatShamirReduction P Msg kg ss hvzk A)) :
     Negligible (fun n => (ROM_EUF_CMA_Game P Msg kg).advantage A n) := by
   -- B is the reduction; hB is the concrete bound from fiatShamir_ROM_bound
-  let B := fiatShamirReduction P Msg kg ss hvzk A δ h_unpred
-  have hB := (fiatShamir_ROM_bound P Msg kg ss hvzk A δ h_unpred).choose_spec
+  let B := fiatShamirReduction P Msg kg ss hvzk A
+  have hB := fiatShamir_ROM_bound P Msg kg ss hvzk A δ h_unpred
   -- Component 1: q · Adv_R(B, ·) is negligible
   have h_qAdv : Negligible (fun n =>
       (A.numQueries n : ℝ) * (RelationGame R kg).advantage B n) :=
