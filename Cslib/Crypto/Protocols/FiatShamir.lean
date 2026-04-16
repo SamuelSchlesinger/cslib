@@ -6,8 +6,8 @@ Authors: Samuel Schlesinger
 
 module
 
-public import Cslib.Cryptography.Protocols.SigmaProtocol
-public import Cslib.Cryptography.Primitives.Signature
+public import Cslib.Crypto.Protocols.SigmaProtocol
+public import Cslib.Crypto.Primitives.Signature
 
 @[expose] public section
 

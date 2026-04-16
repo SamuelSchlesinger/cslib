@@ -6,7 +6,7 @@ Authors: Samuel Schlesinger
 
 module
 
-public import Cslib.Cryptography.Foundations.SecurityGame
+public import Cslib.Crypto.Foundations.SecurityGame
 public import Mathlib.Data.ZMod.Basic
 
 @[expose] public section

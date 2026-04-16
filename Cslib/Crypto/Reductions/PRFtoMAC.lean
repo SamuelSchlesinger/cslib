@@ -6,8 +6,8 @@ Authors: Samuel Schlesinger
 
 module
 
-public import Cslib.Cryptography.Primitives.PRF
-public import Cslib.Cryptography.Primitives.MAC
+public import Cslib.Crypto.Primitives.PRF
+public import Cslib.Crypto.Primitives.MAC
 
 @[expose] public section
 

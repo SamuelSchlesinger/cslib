@@ -6,8 +6,8 @@ Authors: Samuel Schlesinger
 
 module
 
-public import Cslib.Cryptography.Primitives.HashFunction
-public import Cslib.Cryptography.Primitives.Commitment
+public import Cslib.Crypto.Primitives.HashFunction
+public import Cslib.Crypto.Primitives.Commitment
 
 @[expose] public section
 

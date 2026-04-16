@@ -7,7 +7,7 @@ Authors: Samuel Schlesinger
 module
 
 public import Cslib.Probability.ForkingLemma
-public import Cslib.Cryptography.Foundations.RandomOracle
+public import Cslib.Crypto.Foundations.RandomOracle
 
 @[expose] public section
 

@@ -6,7 +6,7 @@ Authors: Samuel Schlesinger
 
 module
 
-public import Cslib.Cryptography.Protocols.SigmaProtocol
+public import Cslib.Crypto.Protocols.SigmaProtocol
 
 @[expose] public section
 

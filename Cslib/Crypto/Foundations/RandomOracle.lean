@@ -6,8 +6,8 @@ Authors: Samuel Schlesinger
 
 module
 
-public import Cslib.Cryptography.Protocols.SigmaProtocol
-public import Cslib.Cryptography.Foundations.OracleInteraction
+public import Cslib.Crypto.Protocols.SigmaProtocol
+public import Cslib.Crypto.Foundations.OracleInteraction
 
 @[expose] public section
 
@@ -17,7 +17,7 @@ public import Cslib.Cryptography.Foundations.OracleInteraction
 This file defines the **security games** used to state and prove the
 ROM (Random Oracle Model) security of Fiat-Shamir signature schemes
 derived from Sigma protocols. It provides the game definitions; the
-security reduction is in `Cslib.Cryptography.Reductions.FiatShamirROM`.
+security reduction is in `Cslib.Crypto.Reductions.FiatShamirROM`.
 
 ## Main Definitions
 

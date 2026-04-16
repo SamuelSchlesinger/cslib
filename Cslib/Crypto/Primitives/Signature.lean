@@ -6,8 +6,8 @@ Authors: Samuel Schlesinger
 
 module
 
-public import Cslib.Cryptography.Foundations.OracleInteraction
-public import Cslib.Cryptography.Foundations.SecurityGame
+public import Cslib.Crypto.Foundations.OracleInteraction
+public import Cslib.Crypto.Foundations.SecurityGame
 
 @[expose] public section
 

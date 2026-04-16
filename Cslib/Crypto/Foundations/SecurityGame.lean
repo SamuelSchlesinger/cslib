@@ -6,7 +6,7 @@ Authors: Samuel Schlesinger
 
 module
 
-public import Cslib.Cryptography.Foundations.Negligible
+public import Cslib.Crypto.Foundations.Negligible
 public import Cslib.Probability.Discrete
 
 @[expose] public section

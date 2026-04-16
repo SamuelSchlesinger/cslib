@@ -6,7 +6,7 @@ Authors: Samuel Schlesinger
 
 module
 
-public import Cslib.Cryptography.Foundations.Indistinguishability
+public import Cslib.Crypto.Foundations.Indistinguishability
 public import Cslib.Computability.Machines.SingleTapeTuring.Basic
 
 @[expose] public section
