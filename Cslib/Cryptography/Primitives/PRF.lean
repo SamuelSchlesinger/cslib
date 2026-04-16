@@ -68,23 +68,36 @@ a random key) or a truly random function, and must distinguish between
 the two cases.
 
 The adversary makes a sequence of queries and then outputs a decision
-bit. We model the oracle as a function from inputs to outputs. -/
+bit. We model the oracle as a function from inputs to outputs, together
+with an explicit finite coin space for the adversary's internal
+randomness. -/
 structure PRF.OracleAdversary (F : PRF) where
+  /-- Internal coins used by the adversary at security level `n`. -/
+  Coins : ℕ → Type
+  /-- Coin spaces are finite (for sampling). -/
+  coinsFintype : ∀ n, Fintype (Coins n)
+  /-- Coin spaces are nonempty. -/
+  coinsNonempty : ∀ n, Nonempty (Coins n)
   /-- Given oracle access, produce a decision -/
-  run : (n : ℕ) → (F.Input n → F.Output n) → Bool
+  run : (n : ℕ) → Coins n → (F.Input n → F.Output n) → Bool
 
 /-- The **PRF security game**: the adversary's advantage is
 $$\left|\Pr_{k}[A^{f_k}=1] - \Pr_{\mathit{rf}}[A^{\mathit{rf}}=1]\right|$$
-where `k` is a uniform random key and `rf` is a uniform random function. -/
+where `k` is a uniform random key, `rf` is a uniform random function,
+and the adversary's internal coins are sampled uniformly in both
+worlds. -/
 noncomputable def PRF.SecurityGame (F : PRF) :
     SecurityGame (PRF.OracleAdversary F) where
   advantage A n :=
     letI := F.keyFintype n; letI := F.keyNonempty n
     letI := F.funFintype n; letI := F.funNonempty n
-    |Cslib.Probability.uniformExpect (F.Key n)
-        (fun k => Cslib.Probability.boolToReal (A.run n (F.eval n k)))
-     - Cslib.Probability.uniformExpect (F.Input n → F.Output n)
-        (fun rf => Cslib.Probability.boolToReal (A.run n rf))|
+    letI := A.coinsFintype n; letI := A.coinsNonempty n
+    |Cslib.Probability.uniformExpect (F.Key n × A.Coins n)
+        (fun x =>
+          Cslib.Probability.boolToReal (A.run n x.2 (F.eval n x.1)))
+     - Cslib.Probability.uniformExpect ((F.Input n → F.Output n) × A.Coins n)
+        (fun x =>
+          Cslib.Probability.boolToReal (A.run n x.2 x.1))|
 
 /-- A PRF is **(information-theoretically) secure** if its security game
 is secure against all adversaries. -/

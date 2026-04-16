@@ -85,7 +85,14 @@ noncomputable def PRF.mkPRFAdversaryFromMAC (F : PRF)
     [∀ n, DecidableEq (F.Input n)]
     (A : MACScheme.EUF_CMA_Adversary F.toMACScheme) :
     PRF.OracleAdversary F where
-  run n oracle :=
+  Coins := fun _ => Unit
+  coinsFintype := by
+    intro n
+    infer_instance
+  coinsNonempty := by
+    intro n
+    infer_instance
+  run n _ oracle :=
     let q := A.numQueries n
     match (A.interact n).run q (fun _i m => oracle m) with
     | none => false
@@ -99,8 +106,8 @@ private theorem PRF.simulateMACBody_eq (F : PRF)
     (A : MACScheme.EUF_CMA_Adversary F.toMACScheme)
     (n : ℕ) (oracle : F.Input n → F.Output n) :
     F.simulateMACBody A n oracle =
-    boolToReal ((F.mkPRFAdversaryFromMAC A).run n oracle) := by
-  simp only [simulateMACBody, mkPRFAdversaryFromMAC]
+    boolToReal ((F.mkPRFAdversaryFromMAC A).run n () oracle) := by
+  simp [simulateMACBody, mkPRFAdversaryFromMAC]
   split
   · rfl
   · rfl
@@ -154,15 +161,60 @@ theorem PRF.toMACScheme_reduction_bound (F : PRF)
     congr 1; ext k; split <;> simp_all
   -- Step 2: The PRF advantage of our adversary
   have h_eq : ∀ oracle : F.Input n → F.Output n,
-      boolToReal ((F.mkPRFAdversaryFromMAC A).run n oracle) =
+      boolToReal ((F.mkPRFAdversaryFromMAC A).run n () oracle) =
       F.simulateMACBody A n oracle :=
     fun oracle => (F.simulateMACBody_eq A n oracle).symm
+  have h_real_fun :
+      (fun x : F.Key n × Unit =>
+        boolToReal ((F.mkPRFAdversaryFromMAC A).run n x.2 (F.eval n x.1))) =
+      (fun x : F.Key n × Unit =>
+        F.simulateMACBody A n (F.eval n x.1)) := by
+    funext x
+    rcases x with ⟨k, u⟩
+    cases u
+    simpa using h_eq (F.eval n k)
+  have h_ideal_fun :
+      (fun x : (F.Input n → F.Output n) × Unit =>
+        boolToReal ((F.mkPRFAdversaryFromMAC A).run n x.2 x.1)) =
+      (fun x : (F.Input n → F.Output n) × Unit =>
+        F.simulateMACBody A n x.1) := by
+    funext x
+    rcases x with ⟨rf, u⟩
+    cases u
+    simpa using h_eq rf
+  have h_real :
+      uniformExpect (F.Key n × Unit) (fun x =>
+        F.simulateMACBody A n (F.eval n x.1)) =
+      uniformExpect (F.Key n) (fun k =>
+        F.simulateMACBody A n (F.eval n k)) := by
+    simpa using
+      (uniformExpect_prod_ignore_snd
+        (α := F.Key n) (β := Unit)
+        (g := fun k => F.simulateMACBody A n (F.eval n k)))
+  have h_ideal :
+      uniformExpect ((F.Input n → F.Output n) × Unit) (fun x =>
+        F.simulateMACBody A n x.1) =
+      uniformExpect (F.Input n → F.Output n) (fun rf =>
+        F.simulateMACBody A n rf) := by
+    simpa using
+      (uniformExpect_prod_ignore_snd
+        (α := F.Input n → F.Output n) (β := Unit)
+        (g := fun rf => F.simulateMACBody A n rf))
   have h_prf_eq : F.SecurityGame.advantage (F.mkPRFAdversaryFromMAC A) n =
       |uniformExpect (F.Key n) (fun k =>
           F.simulateMACBody A n (F.eval n k)) -
        uniformExpect (F.Input n → F.Output n) (fun rf =>
           F.simulateMACBody A n rf)| := by
-    simp only [PRF.SecurityGame, h_eq]
+    change
+      |uniformExpect (F.Key n × Unit) (fun x =>
+          boolToReal ((F.mkPRFAdversaryFromMAC A).run n x.2 (F.eval n x.1))) -
+        uniformExpect ((F.Input n → F.Output n) × Unit) (fun x =>
+          boolToReal ((F.mkPRFAdversaryFromMAC A).run n x.2 x.1))| =
+      |uniformExpect (F.Key n) (fun k =>
+          F.simulateMACBody A n (F.eval n k)) -
+        uniformExpect (F.Input n → F.Output n) (fun rf =>
+          F.simulateMACBody A n rf)|
+    rw [h_real_fun, h_ideal_fun, h_real, h_ideal]
   -- Step 3: real = (real - ideal) + ideal ≤ |real - ideal| + ideal
   rw [h_mac_eq, h_prf_eq]
   unfold EUF_CMA_idealWorldGap

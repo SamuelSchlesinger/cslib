@@ -137,27 +137,36 @@ encryption via `OracleInteraction`:
    encryption oracle, then guess which message was encrypted
 
 The adversary never controls the encryption randomness — the game
-supplies fresh randomness for each oracle query. -/
+supplies fresh randomness for each oracle query. The adversary's own
+randomness is modeled by a finite coin space sampled once per game. -/
 structure IND_CPA_Adversary (E : EncryptionScheme) where
   /-- Adversary state type -/
   State : ℕ → Type
+  /-- Internal coins used by the adversary at security level `n`. -/
+  Coins : ℕ → Type
+  /-- Coin spaces are finite (for sampling). -/
+  coinsFintype : ∀ n, Fintype (Coins n)
+  /-- Coin spaces are nonempty. -/
+  coinsNonempty : ∀ n, Nonempty (Coins n)
   /-- Upper bound on encryption queries in Phase 1 -/
   numQueries1 : ℕ → ℕ
   /-- Upper bound on encryption queries in Phase 2 -/
   numQueries2 : ℕ → ℕ
   /-- Phase 1: query encryption oracle, then choose two challenge messages -/
-  choose : (n : ℕ) →
+  choose : (n : ℕ) → Coins n →
     OracleInteraction (E.Plaintext n) (E.Ciphertext n)
       (E.Plaintext n × E.Plaintext n × State n)
   /-- Phase 2: given challenge ciphertext and state, query encryption
   oracle, then guess which message was encrypted -/
-  guess : (n : ℕ) → E.Ciphertext n → State n →
+  guess : (n : ℕ) → Coins n → E.Ciphertext n → State n →
     OracleInteraction (E.Plaintext n) (E.Ciphertext n) Bool
 
 /-- The **IND-CPA security game** for a symmetric encryption scheme.
 
 The coin space is
-`Key n × (Fin q1 → Randomness n) × Randomness n × (Fin q2 → Randomness n) × Bool`.
+`Key n × Coins n × (Fin q1 → Randomness n) × Randomness n ×
+(Fin q2 → Randomness n) × Bool`, where `Coins n` is the adversary's
+internal randomness and the remaining randomness is game-managed.
 The game pre-samples randomness for each oracle query slot.
 On fuel exhaustion (`none` from `.run`), return `0` for the game body
 (adversary defaults to losing). -/
@@ -168,20 +177,21 @@ noncomputable def IND_CPA_Game (E : EncryptionScheme) :
     let q2 := A.numQueries2 n
     letI := E.keyFintype n; letI := E.keyNonempty n
     letI := E.randomnessFintype n; letI := E.randomnessNonempty n
+    letI := A.coinsFintype n; letI := A.coinsNonempty n
     |Cslib.Probability.uniformExpect
-      (E.Key n × (Fin q1 → E.Randomness n) × E.Randomness n ×
-       (Fin q2 → E.Randomness n) × Bool)
-      (fun ⟨k, rs1, r_ch, rs2, b⟩ =>
+      (E.Key n × A.Coins n × (Fin q1 → E.Randomness n) ×
+       E.Randomness n × (Fin q2 → E.Randomness n) × Bool)
+      (fun ⟨k, coins, rs1, r_ch, rs2, b⟩ =>
         let encOracle1 : Fin q1 → E.Plaintext n → E.Ciphertext n :=
           fun i m => E.encrypt n k m (rs1 i)
-        match (A.choose n).run q1 encOracle1 with
+        match (A.choose n coins).run q1 encOracle1 with
         | none => 0
         | some (_, m₀, m₁, σ) =>
           let challenge := if b then m₁ else m₀
           let ct := E.encrypt n k challenge r_ch
           let encOracle2 : Fin q2 → E.Plaintext n → E.Ciphertext n :=
             fun i m => E.encrypt n k m (rs2 i)
-          match (A.guess n ct σ).run q2 encOracle2 with
+          match (A.guess n coins ct σ).run q2 encOracle2 with
           | none => 0
           | some (_, b') =>
             Cslib.Probability.boolToReal (b' == b))
@@ -194,23 +204,31 @@ noncomputable def IND_CPA_Game (E : EncryptionScheme) :
 oracle (passed as a plain function, since decryption is deterministic).
 
 Phase 1 and Phase 2 both have oracle access. In Phase 2, the
-decryption oracle refuses to decrypt the challenge ciphertext. -/
+decryption oracle refuses to decrypt the challenge ciphertext. The
+adversary's own randomness is modeled by a finite coin space sampled
+once per game. -/
 structure IND_CCA_Adversary (E : EncryptionScheme) where
   /-- Adversary state type -/
   State : ℕ → Type
+  /-- Internal coins used by the adversary at security level `n`. -/
+  Coins : ℕ → Type
+  /-- Coin spaces are finite (for sampling). -/
+  coinsFintype : ∀ n, Fintype (Coins n)
+  /-- Coin spaces are nonempty. -/
+  coinsNonempty : ∀ n, Nonempty (Coins n)
   /-- Upper bound on encryption queries in Phase 1 -/
   numQueries1 : ℕ → ℕ
   /-- Upper bound on encryption queries in Phase 2 -/
   numQueries2 : ℕ → ℕ
   /-- Phase 1: choose messages with encryption oracle and decryption
   oracle access -/
-  choose : (n : ℕ) →
+  choose : (n : ℕ) → Coins n →
     (E.Ciphertext n → Option (E.Plaintext n)) →
     OracleInteraction (E.Plaintext n) (E.Ciphertext n)
       (E.Plaintext n × E.Plaintext n × State n)
   /-- Phase 2: guess with encryption oracle and restricted decryption
   oracle (cannot query challenge ct) -/
-  guess : (n : ℕ) → E.Ciphertext n → State n →
+  guess : (n : ℕ) → Coins n → E.Ciphertext n → State n →
     (E.Ciphertext n → Option (E.Plaintext n)) →
     OracleInteraction (E.Plaintext n) (E.Ciphertext n) Bool
 
@@ -221,6 +239,11 @@ produces two challenge messages. In Phase 2, the adversary receives the
 challenge ciphertext and a restricted decryption oracle that refuses to
 decrypt the challenge ciphertext.
 
+The coin space is
+`Key n × Coins n × (Fin q1 → Randomness n) × Randomness n ×
+(Fin q2 → Randomness n) × Bool`, where `Coins n` is the adversary's
+internal randomness.
+
 On fuel exhaustion (`none` from `.run`), return `0` for the game body. -/
 noncomputable def IND_CCA_Game (E : EncryptionScheme)
     [∀ n, DecidableEq (E.Ciphertext n)] :
@@ -230,14 +253,15 @@ noncomputable def IND_CCA_Game (E : EncryptionScheme)
     let q2 := A.numQueries2 n
     letI := E.keyFintype n; letI := E.keyNonempty n
     letI := E.randomnessFintype n; letI := E.randomnessNonempty n
+    letI := A.coinsFintype n; letI := A.coinsNonempty n
     |Cslib.Probability.uniformExpect
-      (E.Key n × (Fin q1 → E.Randomness n) × E.Randomness n ×
-       (Fin q2 → E.Randomness n) × Bool)
-      (fun ⟨k, rs1, r_ch, rs2, b⟩ =>
+      (E.Key n × A.Coins n × (Fin q1 → E.Randomness n) ×
+       E.Randomness n × (Fin q2 → E.Randomness n) × Bool)
+      (fun ⟨k, coins, rs1, r_ch, rs2, b⟩ =>
         let encOracle1 : Fin q1 → E.Plaintext n → E.Ciphertext n :=
           fun i m => E.encrypt n k m (rs1 i)
         let decOracle := E.decrypt n k
-        match (A.choose n decOracle).run q1 encOracle1 with
+        match (A.choose n coins decOracle).run q1 encOracle1 with
         | none => 0
         | some (_, m₀, m₁, σ) =>
           let challenge := if b then m₁ else m₀
@@ -246,7 +270,7 @@ noncomputable def IND_CCA_Game (E : EncryptionScheme)
             fun c => if c = ct then none else E.decrypt n k c
           let encOracle2 : Fin q2 → E.Plaintext n → E.Ciphertext n :=
             fun i m => E.encrypt n k m (rs2 i)
-          match (A.guess n ct σ decOracle').run q2 encOracle2 with
+          match (A.guess n coins ct σ decOracle').run q2 encOracle2 with
           | none => 0
           | some (_, b') =>
             Cslib.Probability.boolToReal (b' == b))
@@ -264,12 +288,15 @@ by ignoring the decryption oracle. -/
 def IND_CPA_to_CCA (E : EncryptionScheme) (A : IND_CPA_Adversary E) :
     IND_CCA_Adversary E where
   State := A.State
+  Coins := A.Coins
+  coinsFintype := A.coinsFintype
+  coinsNonempty := A.coinsNonempty
   numQueries1 := A.numQueries1
   numQueries2 := A.numQueries2
-  choose n _decOracle :=
-    A.choose n
-  guess n ct σ _decOracle :=
-    A.guess n ct σ
+  choose n coins _decOracle :=
+    A.choose n coins
+  guess n coins ct σ _decOracle :=
+    A.guess n coins ct σ
 
 /-- Every IND-CCA adversary can be turned into an IND-CPA adversary
 by replacing the decryption oracle with one that always returns `none`.
@@ -279,12 +306,15 @@ IND-CCA security. -/
 def IND_CCA_to_CPA (E : EncryptionScheme) (A : IND_CCA_Adversary E) :
     IND_CPA_Adversary E where
   State := A.State
+  Coins := A.Coins
+  coinsFintype := A.coinsFintype
+  coinsNonempty := A.coinsNonempty
   numQueries1 := A.numQueries1
   numQueries2 := A.numQueries2
-  choose n :=
-    A.choose n (fun _ => none)
-  guess n ct σ :=
-    A.guess n ct σ (fun _ => none)
+  choose n coins :=
+    A.choose n coins (fun _ => none)
+  guess n coins ct σ :=
+    A.guess n coins ct σ (fun _ => none)
 
 /-! ### PKE Security -/
 

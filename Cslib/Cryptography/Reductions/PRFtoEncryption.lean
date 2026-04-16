@@ -45,7 +45,7 @@ open Cslib.Probability
 /-- The standard PRF-based encryption scheme: `Enc(k, m; r) = (r, F(k,r) + m)`.
 
 The type aliases below make the construction transparent for reductions. -/
-noncomputable def PRF.toEncryptionScheme (F : PRF)
+@[reducible] noncomputable def PRF.toEncryptionScheme (F : PRF)
     [∀ n, AddCommGroup (F.Output n)]
     [∀ n, Fintype (F.Input n)] [∀ n, Nonempty (F.Input n)]
     : EncryptionScheme where
@@ -87,36 +87,96 @@ theorem PRF.toEncryptionScheme_correct (F : PRF)
   intro n k m r
   simp [toEncryptionScheme]
 
-/-- Simulate the IND-CPA game body with a given oracle function.
+/-- The non-key coins used by the PRF reduction. -/
+abbrev PRFReductionCoins (F : PRF)
+    [∀ n, AddCommGroup (F.Output n)]
+    [∀ n, Fintype (F.Input n)] [∀ n, Nonempty (F.Input n)]
+    (A : IND_CPA_Adversary F.toEncryptionScheme) (n : ℕ) : Type :=
+  A.Coins n × (Fin (A.numQueries1 n) → F.Input n) × F.Input n ×
+    (Fin (A.numQueries2 n) → F.Input n) × Bool
+
+/-- Simulate the IND-CPA game body with a fixed non-key coin tuple and
+oracle function.
 
 Given `oracle : F.Input n → F.Output n` (either `F(k,·)` or a random
-function), encryption randomness slots `rs1`, `rs2`, challenge
-randomness `r₀`, and challenge bit `b₀`, run the adversary's oracle
-interaction and compute whether the adversary guesses correctly.
-
-Returns `0` on fuel exhaustion. -/
+function), run the adversary's oracle interaction and compute whether
+the adversary guesses correctly. Returns `0` on fuel exhaustion. -/
 noncomputable def PRF.simulateBody (F : PRF)
     [∀ n, AddCommGroup (F.Output n)]
     [∀ n, Fintype (F.Input n)] [∀ n, Nonempty (F.Input n)]
     (A : IND_CPA_Adversary F.toEncryptionScheme)
-    (n : ℕ) (r₀ : F.Input n) (b₀ : Bool)
-    (oracle : F.Input n → F.Output n)
-    (rs1 : Fin (A.numQueries1 n) → F.Input n)
-    (rs2 : Fin (A.numQueries2 n) → F.Input n) : ℝ :=
-  let q1 := A.numQueries1 n
-  let q2 := A.numQueries2 n
-  let encOracle1 : Fin q1 → F.Output n → F.Input n × F.Output n :=
-    fun i m => (rs1 i, oracle (rs1 i) + m)
-  match (A.choose n).run q1 encOracle1 with
+    (n : ℕ) (coins : PRFReductionCoins F A n)
+    (oracle : F.Input n → F.Output n) : ℝ :=
+  match
+    (A.choose n coins.1).run (A.numQueries1 n)
+      (fun i m => (coins.2.1 i, oracle (coins.2.1 i) + m)) with
   | none => 0
   | some (_, m₀, m₁, σ) =>
-    let challenge : F.Output n := if b₀ then m₁ else m₀
-    let ct : F.Input n × F.Output n := (r₀, oracle r₀ + challenge)
-    let encOracle2 : Fin q2 → F.Output n → F.Input n × F.Output n :=
-      fun i m => (rs2 i, oracle (rs2 i) + m)
-    match (A.guess n ct σ).run q2 encOracle2 with
+    match
+      (A.guess n coins.1
+          (coins.2.2.1, oracle (coins.2.2.1) + if coins.2.2.2.2 then m₁ else m₀) σ).run
+        (A.numQueries2 n)
+        (fun i m => (coins.2.2.2.1 i, oracle (coins.2.2.2.1 i) + m)) with
     | none => 0
-    | some (_, b') => boolToReal (b' == b₀)
+    | some (_, b') => boolToReal (b' == coins.2.2.2.2)
+
+/-- Boolean version of `simulateBody`. -/
+def prfSimulateBodyBool (F : PRF)
+    [∀ n, AddCommGroup (F.Output n)]
+    [∀ n, Fintype (F.Input n)] [∀ n, Nonempty (F.Input n)]
+    (A : IND_CPA_Adversary F.toEncryptionScheme)
+    (n : ℕ) (coins : PRFReductionCoins F A n)
+    (oracle : F.Input n → F.Output n) : Bool :=
+  match
+    (A.choose n coins.1).run (A.numQueries1 n)
+      (fun i m => (coins.2.1 i, oracle (coins.2.1 i) + m)) with
+  | none => false
+  | some (_, m₀, m₁, σ) =>
+    match
+      (A.guess n coins.1
+          (coins.2.2.1, oracle (coins.2.2.1) + if coins.2.2.2.2 then m₁ else m₀) σ).run
+        (A.numQueries2 n)
+        (fun i m => (coins.2.2.2.1 i, oracle (coins.2.2.2.1 i) + m)) with
+    | none => false
+    | some (_, b') => b' == coins.2.2.2.2
+
+theorem prfSimulateBody_eq_bool (F : PRF)
+    [∀ n, AddCommGroup (F.Output n)]
+    [∀ n, Fintype (F.Input n)] [∀ n, Nonempty (F.Input n)]
+    (A : IND_CPA_Adversary F.toEncryptionScheme)
+    (n : ℕ) (coins : PRFReductionCoins F A n)
+    (oracle : F.Input n → F.Output n) :
+    F.simulateBody A n coins oracle =
+      boolToReal (prfSimulateBodyBool F A n coins oracle) := by
+  unfold PRF.simulateBody prfSimulateBodyBool
+  rcases hc :
+      (A.choose n coins.1).run (A.numQueries1 n)
+        (fun i m => (coins.2.1 i, oracle (coins.2.1 i) + m)) with _ | ⟨_, m₀, m₁, σ⟩
+  · simp [boolToReal]
+  · rcases hg :
+        (A.guess n coins.1
+            (coins.2.2.1, oracle (coins.2.2.1) + if coins.2.2.2.2 then m₁ else m₀) σ).run
+          (A.numQueries2 n)
+          (fun i m => (coins.2.2.2.1 i, oracle (coins.2.2.2.1 i) + m)) with _ | ⟨_, b'⟩
+    · simp [hg, boolToReal]
+    · simp [hg, boolToReal, beq_iff_eq]
+
+/-- Construct a PRF adversary from an IND-CPA adversary. -/
+noncomputable def PRF.mkPRFAdversary (F : PRF)
+    [∀ n, AddCommGroup (F.Output n)]
+    [∀ n, Fintype (F.Input n)] [∀ n, Nonempty (F.Input n)]
+    (A : IND_CPA_Adversary F.toEncryptionScheme) :
+    PRF.OracleAdversary F where
+  Coins := PRFReductionCoins F A
+  coinsFintype := by
+    intro n
+    letI := A.coinsFintype n
+    infer_instance
+  coinsNonempty := by
+    intro n
+    letI := A.coinsNonempty n
+    infer_instance
+  run n coins oracle := prfSimulateBodyBool F A n coins oracle
 
 /-- Construct a PRF adversary from an IND-CPA adversary at a specific
 security parameter with specific randomness and challenge bit.
@@ -127,18 +187,24 @@ noncomputable def PRF.mkPRFAdversaryAt (F : PRF)
     [∀ n, AddCommGroup (F.Output n)]
     [∀ n, Fintype (F.Input n)] [∀ n, Nonempty (F.Input n)]
     (A : IND_CPA_Adversary F.toEncryptionScheme)
-    (n₀ : ℕ) (r₀ : F.Input n₀) (b₀ : Bool)
+    (n₀ : ℕ) (coins₀ : A.Coins n₀)
+    (r₀ : F.Input n₀) (b₀ : Bool)
     (rs1 : Fin (A.numQueries1 n₀) → F.Input n₀)
     (rs2 : Fin (A.numQueries2 n₀) → F.Input n₀) :
     PRF.OracleAdversary F where
-  run n oracle :=
+  Coins := fun _ => Unit
+  coinsFintype := by
+    intro n
+    infer_instance
+  coinsNonempty := by
+    intro n
+    infer_instance
+  run n _ oracle :=
     if h : n = n₀ then
       let oracle' : F.Input n₀ → F.Output n₀ :=
         fun x => cast (congrArg F.Output h)
           (oracle (cast (congrArg F.Input h.symm) x))
-      let rs1' := rs1
-      let rs2' := rs2
-      (F.simulateBody A n₀ r₀ b₀ oracle' rs1' rs2' > 0)
+      prfSimulateBodyBool F A n₀ (coins₀, rs1, r₀, rs2, b₀) oracle'
     else true
 
 /-- The IND-CPA advantage in the "ideal world" where the encryption
@@ -154,13 +220,11 @@ noncomputable def IND_CPA_idealWorldGap (F : PRF)
     [∀ n, Fintype (F.Input n)] [∀ n, Nonempty (F.Input n)]
     (A : IND_CPA_Adversary F.toEncryptionScheme) (n : ℕ) : ℝ :=
   letI := F.funFintype n; letI := F.funNonempty n
-  |uniformExpect
-    (F.Input n × Bool ×
-     (Fin (A.numQueries1 n) → F.Input n) ×
-     (Fin (A.numQueries2 n) → F.Input n))
-    (fun ⟨r, b, rs1, rs2⟩ =>
-    uniformExpect (F.Input n → F.Output n) (fun rf =>
-      F.simulateBody A n r b rf rs1 rs2))
+  letI := A.coinsFintype n; letI := A.coinsNonempty n
+  letI : Fintype (PRFReductionCoins F A n) := inferInstance
+  letI : Nonempty (PRFReductionCoins F A n) := inferInstance
+  |uniformExpect ((F.Input n → F.Output n) × PRFReductionCoins F A n) (fun x =>
+      F.simulateBody A n x.2 x.1)
    - 1/2|
 
 /-- **PRF → IND-CPA reduction bound.**
@@ -182,7 +246,85 @@ theorem PRF.toEncryptionScheme_reduction_bound (F : PRF)
       ∀ n, (IND_CPA_Game F.toEncryptionScheme).advantage A n ≤
         F.SecurityGame.advantage B n +
         IND_CPA_idealWorldGap F A n := by
-  sorry
+  let B := F.mkPRFAdversary A
+  refine ⟨B, fun n => ?_⟩
+  letI := F.keyFintype n
+  letI := F.keyNonempty n
+  letI := F.funFintype n
+  letI := F.funNonempty n
+  letI := A.coinsFintype n
+  letI := A.coinsNonempty n
+  letI : Fintype (PRFReductionCoins F A n) := inferInstance
+  letI : Nonempty (PRFReductionCoins F A n) := inferInstance
+  have h_game_bool :
+      (IND_CPA_Game F.toEncryptionScheme).advantage A n =
+        |uniformExpect (F.Key n × PRFReductionCoins F A n) (fun x =>
+            boolToReal (prfSimulateBodyBool F A n x.2 (F.eval n x.1))) - 1 / 2| := by
+    unfold IND_CPA_Game
+    simp only [PRF.toEncryptionScheme]
+    congr 1
+    congr 1
+    rw [uniformExpect_eq, uniformExpect_eq]
+    congr 1
+    refine Finset.sum_congr rfl ?_
+    intro a _
+    rcases a with ⟨k, coins, rs1, r, rs2, b⟩
+    change _ = boolToReal (prfSimulateBodyBool F A n (coins, rs1, r, rs2, b) (F.eval n k))
+    unfold prfSimulateBodyBool
+    rcases hc : (A.choose n coins).run (A.numQueries1 n)
+        (fun i m => (rs1 i, F.eval n k (rs1 i) + m)) with _ | ⟨_, m₀, m₁, σ⟩
+    · simp [boolToReal]
+    · rcases hg : (A.guess n coins (r, F.eval n k r + if b then m₁ else m₀) σ).run
+          (A.numQueries2 n) (fun i m => (rs2 i, F.eval n k (rs2 i) + m)) with _ | ⟨_, b'⟩
+      · simp [hg, boolToReal]
+      · simp [hg, boolToReal, beq_iff_eq]
+  have h_gap :
+      IND_CPA_idealWorldGap F A n =
+        |uniformExpect ((F.Input n → F.Output n) × PRFReductionCoins F A n) (fun x =>
+            F.simulateBody A n x.2 x.1) - 1 / 2| := by
+    rfl
+  have h_gap_bool :
+      IND_CPA_idealWorldGap F A n =
+        |uniformExpect ((F.Input n → F.Output n) × PRFReductionCoins F A n) (fun x =>
+            boolToReal (prfSimulateBodyBool F A n x.2 x.1)) - 1 / 2| := by
+    have h_eq :
+        uniformExpect ((F.Input n → F.Output n) × PRFReductionCoins F A n) (fun x =>
+          F.simulateBody A n x.2 x.1) =
+          uniformExpect ((F.Input n → F.Output n) × PRFReductionCoins F A n) (fun x =>
+            boolToReal (prfSimulateBodyBool F A n x.2 x.1)) := by
+      congr 1
+      funext x
+      simpa using prfSimulateBody_eq_bool F A n x.2 x.1
+    rw [h_gap, h_eq]
+  have h_B :
+      F.SecurityGame.advantage B n =
+        |uniformExpect (F.Key n × PRFReductionCoins F A n) (fun x =>
+            boolToReal (prfSimulateBodyBool F A n x.2 (F.eval n x.1))) -
+          uniformExpect ((F.Input n → F.Output n) × PRFReductionCoins F A n) (fun x =>
+            boolToReal (prfSimulateBodyBool F A n x.2 x.1))| := by
+    rfl
+  rw [h_game_bool, h_B, h_gap_bool]
+  calc
+    |uniformExpect (F.Key n × PRFReductionCoins F A n) (fun x =>
+        boolToReal (prfSimulateBodyBool F A n x.2 (F.eval n x.1))) - 1 / 2| ≤
+      |uniformExpect (F.Key n × PRFReductionCoins F A n) (fun x =>
+          boolToReal (prfSimulateBodyBool F A n x.2 (F.eval n x.1))) -
+        uniformExpect ((F.Input n → F.Output n) × PRFReductionCoins F A n) (fun x =>
+          boolToReal (prfSimulateBodyBool F A n x.2 x.1))| +
+      |uniformExpect ((F.Input n → F.Output n) × PRFReductionCoins F A n) (fun x =>
+          boolToReal (prfSimulateBodyBool F A n x.2 x.1)) - 1 / 2| := by
+      have h_split :
+          uniformExpect (F.Key n × PRFReductionCoins F A n) (fun x =>
+              boolToReal (prfSimulateBodyBool F A n x.2 (F.eval n x.1))) - 1 / 2 =
+            (uniformExpect (F.Key n × PRFReductionCoins F A n) (fun x =>
+                boolToReal (prfSimulateBodyBool F A n x.2 (F.eval n x.1))) -
+              uniformExpect ((F.Input n → F.Output n) × PRFReductionCoins F A n) (fun x =>
+                boolToReal (prfSimulateBodyBool F A n x.2 x.1))) +
+            (uniformExpect ((F.Input n → F.Output n) × PRFReductionCoins F A n) (fun x =>
+                boolToReal (prfSimulateBodyBool F A n x.2 x.1)) - 1 / 2) := by
+        ring
+      rw [h_split]
+      exact abs_add_le _ _
 
 /-- **PRF security + negligible ideal-world gap → IND-CPA security.**
 
