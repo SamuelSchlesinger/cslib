@@ -121,6 +121,17 @@ lemma RelatesInSteps.succ'_iff {a b : α} {n : ℕ} :
     exact h_steps.head a t' b n h_red
 
 /--
+A predicate preserved by every step of `r` is preserved along any chain of `r`-steps.
+-/
+lemma RelatesInSteps.invariant {a b : α} {n : ℕ} {P : α → Prop}
+    (h_step : ∀ {x y}, r x y → P x → P y) (h_rel : RelatesInSteps r a b n) :
+    P a → P b := by
+  induction h_rel with
+  | refl => exact id
+  | tail _ _ _ _ h₂ ih => exact fun ha => h_step h₂ (ih ha)
+
+
+/--
 If `h : α → ℕ` increases by at most 1 on each step of `r`,
 then the value of `h` at the output is at most `h` at the input plus the number of steps.
 -/

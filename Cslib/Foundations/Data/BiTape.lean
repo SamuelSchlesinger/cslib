@@ -44,6 +44,7 @@ namespace Turing
 A structure for bidirectionally-infinite Turing machine tapes
 that eventually take on blank `none` values
 -/
+@[ext]
 structure BiTape (Symbol : Type) where
   /-- The symbol currently under the tape head -/
   head : Option Symbol
@@ -114,12 +115,27 @@ lemma move_left_move_right (t : BiTape Symbol) : t.move_left.move_right = t := b
 lemma move_right_move_left (t : BiTape Symbol) : t.move_right.move_left = t := by
   simp [move_left, move_right]
 
+@[simp]
+lemma move_left_nil : (nil : BiTape Symbol).move_left = nil := rfl
+
+@[simp]
+lemma move_right_nil : (nil : BiTape Symbol).move_right = nil := rfl
+
+@[simp]
+lemma optionMove_nil (m : Option Dir) : (nil : BiTape Symbol).optionMove m = nil := by
+  cases m with
+  | none => rfl
+  | some d => cases d <;> rfl
+
 end Move
 
 /--
 Write a value under the head of the `BiTape`.
 -/
 def write (t : BiTape Symbol) (a : Option Symbol) : BiTape Symbol := { t with head := a }
+
+@[simp]
+lemma write_head (t : BiTape Symbol) : t.write t.head = t := rfl
 
 /--
 The space used by a `BiTape` is the number of symbols
