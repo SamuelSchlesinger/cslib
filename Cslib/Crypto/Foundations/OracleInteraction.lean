@@ -6,6 +6,8 @@ Authors: Samuel Schlesinger
 
 module
 
+public import Cslib.Probability.Discrete
+
 @[expose] public section
 
 /-!
@@ -175,7 +177,7 @@ theorem OracleInteraction.run_prefix_query_eq {Q R A : Type}
           | zero => rfl
           | succ k' =>
             simp only [List.length_cons, Nat.succ_lt_succ_iff] at hk₁ hk₂
-            show qs₁[k'] = qs₂[k']
+            change qs₁[k'] = qs₂[k']
             -- Oracle responses at step 0 agree (0 < k'+1)
             have h_r : oracle₁ ⟨0, Nat.zero_lt_succ n⟩ q =
                 oracle₂ ⟨0, Nat.zero_lt_succ n⟩ q :=
@@ -403,7 +405,7 @@ theorem OracleInteraction.runWithState_prefix_query_eq {Q R A S : Type}
           | zero => rfl
           | succ k' =>
             simp only [List.length_cons, Nat.succ_lt_succ_iff] at hk₁ hk₂
-            show qs₁[k'] = qs₂[k']
+            change qs₁[k'] = qs₂[k']
             have h_r : oracle₁ ⟨0, Nat.zero_lt_succ n⟩ s q =
                 oracle₂ ⟨0, Nat.zero_lt_succ n⟩ s q :=
               congrFun (congrFun (h_agree ⟨0, Nat.zero_lt_succ n⟩
@@ -553,5 +555,550 @@ theorem OracleInteraction.runWithState_det_prefix {Q R A S : Type}
               (oracle₂ ⟨0, Nat.zero_lt_succ n⟩ s q).2 with
             | none => none | some (qs, a', sf') => some (q :: qs, a', sf') := rfl
         rw [red₂, ← h_r, h_ih]
+
+/-! ### Per-step access: `queryAtWithState` and `stateBeforeWithState`
+
+These project the query made at step `idx` and the state just before it,
+without needing the overall `runWithState` to terminate. They enable
+prefix-independence arguments (see `queryAtWithState_eq_of_prefix`) and
+are the scaffolding behind `runWithState_eq_of_oracle_agree_on_trace`. -/
+
+/-- Return the `idx`-th query issued by a stateful interaction, if it exists,
+without requiring the whole `runWithState` call to terminate successfully.
+
+This is useful for prefix-dependence arguments: `queryAtWithState ... idx`
+only depends on oracle indices `< idx + 1`. -/
+def queryAtWithState {Q R A S : Type}
+    : (interaction : OracleInteraction Q R A) →
+      (fuel : Nat) →
+      (oracle : Fin fuel → S → Q → R × S) →
+      (initState : S) →
+      (idx : Nat) →
+      Option Q
+  | .done _, _, _, _, _ => none
+  | .query _ _, 0, _, _, _ => none
+  | .query q k, fuel + 1, oracle, s, idx =>
+    match idx with
+    | 0 => some q
+    | idx + 1 =>
+      let (response, s') := oracle ⟨0, Nat.zero_lt_succ fuel⟩ s q
+      let shiftedOracle : Fin fuel → S → Q → R × S :=
+        fun i => oracle ⟨i.val + 1, Nat.succ_lt_succ i.isLt⟩
+      queryAtWithState (k response) fuel shiftedOracle s' idx
+
+/-- State just before processing query `idx` (if that query exists), for a
+stateful interaction run with fixed fuel and oracle. -/
+def stateBeforeWithState {Q R A S : Type}
+    : (interaction : OracleInteraction Q R A) →
+      (fuel : Nat) →
+      (oracle : Fin fuel → S → Q → R × S) →
+      (initState : S) →
+      (idx : Nat) →
+      Option S
+  | .done _, _, _, s, 0 => some s
+  | .done _, _, _, _, _ + 1 => none
+  | .query _ _, 0, _, s, 0 => some s
+  | .query _ _, 0, _, _, _ + 1 => none
+  | .query _ _, _fuel + 1, _, s, 0 => some s
+  | .query q k, fuel + 1, oracle, s, idx + 1 =>
+    let (response, s') := oracle ⟨0, Nat.zero_lt_succ fuel⟩ s q
+    let shiftedOracle : Fin fuel → S → Q → R × S :=
+      fun i => oracle ⟨i.val + 1, Nat.succ_lt_succ i.isLt⟩
+    stateBeforeWithState (k response) fuel shiftedOracle s' idx
+
+/-- `queryAtWithState` depends only on the oracle prefix `≤ idx`. -/
+theorem queryAtWithState_eq_of_prefix
+    {Q R A S : Type}
+    (interaction : OracleInteraction Q R A)
+    (fuel : Nat)
+    (oracle₁ oracle₂ : Fin fuel → S → Q → R × S)
+    (s : S)
+    (idx : Nat)
+    (h_agree : ∀ (i : Fin fuel), i.val < idx → oracle₁ i = oracle₂ i) :
+    queryAtWithState interaction fuel oracle₁ s idx =
+    queryAtWithState interaction fuel oracle₂ s idx := by
+  induction idx generalizing interaction fuel oracle₁ oracle₂ s with
+  | zero =>
+    cases interaction with
+    | done a =>
+      cases fuel <;> rfl
+    | query q k =>
+      cases fuel <;> rfl
+  | succ idx ih =>
+    cases interaction with
+    | done a =>
+      cases fuel <;> rfl
+    | query q k =>
+      cases fuel with
+      | zero =>
+        rfl
+      | succ fuel =>
+        simp only [queryAtWithState]
+        have h0 : oracle₁ ⟨0, Nat.zero_lt_succ fuel⟩ s q =
+            oracle₂ ⟨0, Nat.zero_lt_succ fuel⟩ s q := by
+          exact congrFun (congrFun
+            (h_agree ⟨0, Nat.zero_lt_succ fuel⟩ (Nat.zero_lt_succ _)) s) q
+        let shifted₁ : Fin fuel → S → Q → R × S :=
+          fun i => oracle₁ ⟨i.val + 1, Nat.succ_lt_succ i.isLt⟩
+        let shifted₂ : Fin fuel → S → Q → R × S :=
+          fun i => oracle₂ ⟨i.val + 1, Nat.succ_lt_succ i.isLt⟩
+        have h_shift : ∀ (i : Fin fuel), i.val < idx → shifted₁ i = shifted₂ i := by
+          intro i hi
+          exact h_agree ⟨i.val + 1, Nat.succ_lt_succ i.isLt⟩ (Nat.succ_lt_succ hi)
+        have h_tail := ih
+          (k (oracle₁ ⟨0, Nat.zero_lt_succ fuel⟩ s q).1)
+          fuel shifted₁ shifted₂
+          (oracle₁ ⟨0, Nat.zero_lt_succ fuel⟩ s q).2
+          h_shift
+        have h_rhs :
+            queryAtWithState
+              (k (oracle₁ ⟨0, Nat.zero_lt_succ fuel⟩ s q).1)
+              fuel shifted₂
+              (oracle₁ ⟨0, Nat.zero_lt_succ fuel⟩ s q).2 idx =
+            queryAtWithState
+              (k (oracle₂ ⟨0, Nat.zero_lt_succ fuel⟩ s q).1)
+              fuel shifted₂
+              (oracle₂ ⟨0, Nat.zero_lt_succ fuel⟩ s q).2 idx :=
+          congrArg
+            (fun p : R × S => queryAtWithState (k p.1) fuel shifted₂ p.2 idx) h0
+        exact (by
+          simpa [shifted₁, shifted₂] using h_tail.trans h_rhs)
+
+/-- The query log produced by `runWithState` has length at most `fuel`. -/
+theorem runWithState_length_le {Q R A S : Type}
+    : ∀ (interaction : OracleInteraction Q R A)
+        (fuel : Nat) (oracle : Fin fuel → S → Q → R × S)
+        (s : S) (queries : List Q) (a : A) (sf : S),
+      interaction.runWithState fuel oracle s = some (queries, a, sf) →
+      queries.length ≤ fuel := by
+  intro interaction fuel
+  induction fuel generalizing interaction with
+  | zero =>
+    intro oracle s queries a sf h
+    cases interaction with
+    | done _ =>
+      change some ([], _, _) = some (queries, a, sf) at h
+      obtain ⟨rfl, _, _⟩ := Prod.mk.inj (Option.some.inj h)
+      simp
+    | query _ _ => exact absurd h nofun
+  | succ n ih =>
+    intro oracle s queries a sf h
+    cases interaction with
+    | done _ =>
+      change some ([], _, _) = some (queries, a, sf) at h
+      obtain ⟨rfl, _, _⟩ := Prod.mk.inj (Option.some.inj h)
+      simp
+    | query q k =>
+      simp only [OracleInteraction.runWithState] at h
+      split at h
+      · exact absurd h nofun
+      · have hinj := Option.some.inj h
+        obtain ⟨rfl, rfl, rfl⟩ := Prod.mk.inj hinj
+        simp only [List.length_cons]
+        exact Nat.succ_le_succ (ih _ _ _ _ _ _ (by assumption))
+
+/-- `runWithState` final state equals `stateBeforeWithState` at `queries.length`. -/
+theorem runWithState_finalState_eq_stateBeforeWithState {Q R A S : Type}
+    : ∀ (interaction : OracleInteraction Q R A)
+        (fuel : Nat) (oracle : Fin fuel → S → Q → R × S)
+        (s : S) (queries : List Q) (a : A) (sf : S),
+      interaction.runWithState fuel oracle s = some (queries, a, sf) →
+      stateBeforeWithState interaction fuel oracle s queries.length = some sf := by
+  intro interaction fuel
+  induction fuel generalizing interaction with
+  | zero =>
+    intro oracle s queries a sf h
+    cases interaction with
+    | done a' =>
+      simp only [OracleInteraction.runWithState, Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, _, rfl⟩ := h; simp [stateBeforeWithState]
+    | query _ _ =>
+      simp only [OracleInteraction.runWithState] at h; contradiction
+  | succ fuel ih =>
+    intro oracle s queries a sf h
+    cases interaction with
+    | done a' =>
+      simp only [OracleInteraction.runWithState, Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, _, rfl⟩ := h; simp [stateBeforeWithState]
+    | query q k =>
+      simp only [OracleInteraction.runWithState] at h
+      split at h
+      · simp at h
+      · next qs' a' hrec =>
+        simp only [Option.some.injEq, Prod.mk.injEq] at h
+        obtain ⟨rfl, rfl, rfl⟩ := h
+        simp only [stateBeforeWithState]
+        exact ih _ _ _ _ _ _ hrec
+
+/-- `runWithState` query list entries match `queryAtWithState`. -/
+theorem runWithState_query_eq_queryAtWithState {Q R A S : Type}
+    : ∀ (interaction : OracleInteraction Q R A)
+        (fuel : Nat) (oracle : Fin fuel → S → Q → R × S)
+        (s : S) (queries : List Q) (a : A) (sf : S),
+      interaction.runWithState fuel oracle s = some (queries, a, sf) →
+      ∀ (idx : Nat) (hlt : idx < queries.length),
+        queryAtWithState interaction fuel oracle s idx = some (queries.get ⟨idx, hlt⟩) := by
+  intro interaction fuel
+  induction fuel generalizing interaction with
+  | zero =>
+    intro oracle s queries a sf h
+    cases interaction with
+    | done a' =>
+      simp only [OracleInteraction.runWithState, Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, _, _⟩ := h
+      intro idx hlt; simp at hlt
+    | query _ _ =>
+      simp only [OracleInteraction.runWithState] at h; contradiction
+  | succ fuel ih =>
+    intro oracle s queries a sf h
+    cases interaction with
+    | done a' =>
+      simp only [OracleInteraction.runWithState, Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, _, _⟩ := h
+      intro idx hlt; simp at hlt
+    | query q k =>
+      simp only [OracleInteraction.runWithState] at h
+      split at h
+      · simp at h
+      · next qs' a' hrec =>
+        simp only [Option.some.injEq, Prod.mk.injEq] at h
+        obtain ⟨rfl, rfl, rfl⟩ := h
+        intro idx hlt
+        cases idx with
+        | zero => simp [queryAtWithState]
+        | succ idx' =>
+          simp only [queryAtWithState, List.get_cons_succ]
+          exact ih _ _ _ _ _ _ hrec idx' (by simpa [List.length_cons] using hlt)
+
+/-- At index 0, `stateBeforeWithState` always returns the initial state. -/
+theorem stateBeforeWithState_at_zero {Q R A S : Type}
+    (interaction : OracleInteraction Q R A)
+    (fuel : Nat) (oracle : Fin fuel → S → Q → R × S)
+    (s : S) :
+    stateBeforeWithState interaction fuel oracle s 0 = some s := by
+  cases interaction with
+  | done _ => rfl
+  | query _ _ => cases fuel <;> rfl
+
+/-- If `stateBeforeWithState` at `idx+1` is `some`, then so are the state and
+query at `idx`, and they compose via the oracle. -/
+theorem stateBeforeWithState_pred {Q R A S : Type}
+    : ∀ (interaction : OracleInteraction Q R A)
+        (fuel : Nat) (oracle : Fin fuel → S → Q → R × S)
+        (s : S) (idx : Nat) (hidx : idx < fuel) (st' : S),
+      stateBeforeWithState interaction fuel oracle s (idx + 1) = some st' →
+      ∃ (st : S) (qry : Q),
+        stateBeforeWithState interaction fuel oracle s idx = some st ∧
+        queryAtWithState interaction fuel oracle s idx = some qry ∧
+        st' = (oracle ⟨idx, hidx⟩ st qry).2 := by
+  intro interaction fuel
+  induction fuel generalizing interaction with
+  | zero => intro _ _ _ _ hidx; omega
+  | succ fuel ih =>
+    intro oracle s idx hidx st' h_step
+    cases interaction with
+    | done a =>
+      cases idx with
+      | zero => simp [stateBeforeWithState] at h_step
+      | succ _ => simp [stateBeforeWithState] at h_step
+    | query q k =>
+      cases idx with
+      | zero =>
+        simp only [stateBeforeWithState] at h_step
+        have h0 := stateBeforeWithState_at_zero
+          (k (oracle ⟨0, Nat.zero_lt_succ fuel⟩ s q).1) fuel
+          (fun i => oracle ⟨i.val + 1, Nat.succ_lt_succ i.isLt⟩)
+          (oracle ⟨0, Nat.zero_lt_succ fuel⟩ s q).2
+        rw [h0] at h_step
+        exact ⟨s, q, rfl, rfl, (Option.some.inj h_step).symm⟩
+      | succ idx' =>
+        simp only [stateBeforeWithState] at h_step
+        have ih_result := ih (k (oracle ⟨0, Nat.zero_lt_succ fuel⟩ s q).1)
+          (fun i => oracle ⟨i.val + 1, Nat.succ_lt_succ i.isLt⟩)
+          (oracle ⟨0, Nat.zero_lt_succ fuel⟩ s q).2
+          idx' (by omega) st' h_step
+        obtain ⟨st, qry, h_st, h_qry, h_eq⟩ := ih_result
+        simp only [stateBeforeWithState, queryAtWithState]
+        exact ⟨st, qry, h_st, h_qry, h_eq⟩
+
+/-- The state at step `idx + 1` is obtained by applying the oracle at step `idx`
+to the state and query at step `idx`. -/
+theorem stateBeforeWithState_step {Q R A S : Type}
+    : ∀ (interaction : OracleInteraction Q R A)
+        (fuel : Nat) (oracle : Fin fuel → S → Q → R × S)
+        (s : S) (idx : Nat) (hidx : idx < fuel) (st : S) (qry : Q),
+      stateBeforeWithState interaction fuel oracle s idx = some st →
+      queryAtWithState interaction fuel oracle s idx = some qry →
+      stateBeforeWithState interaction fuel oracle s (idx + 1) =
+        some (oracle ⟨idx, hidx⟩ st qry).2 := by
+  intro interaction fuel
+  induction fuel generalizing interaction with
+  | zero => intro _ _ _ _ hidx; omega
+  | succ fuel ih =>
+    intro oracle s idx hidx st qry h_st h_qry
+    cases interaction with
+    | done a =>
+      cases idx with
+      | zero => simp [queryAtWithState] at h_qry
+      | succ _ => simp [stateBeforeWithState] at h_st
+    | query q k =>
+      cases idx with
+      | zero =>
+        simp only [stateBeforeWithState, Option.some.injEq] at h_st
+        simp only [queryAtWithState, Option.some.injEq] at h_qry
+        subst h_st; subst h_qry
+        simp only [stateBeforeWithState]
+        cases (k (oracle ⟨0, Nat.zero_lt_succ fuel⟩ s q).1) with
+        | done a => cases fuel <;> simp [stateBeforeWithState]
+        | query _ _ => cases fuel <;> simp [stateBeforeWithState]
+      | succ idx' =>
+        simp only [stateBeforeWithState] at h_st ⊢
+        simp only [queryAtWithState] at h_qry
+        exact ih (k (oracle ⟨0, Nat.zero_lt_succ fuel⟩ s q).1)
+          (fun i => oracle ⟨i.val + 1, Nat.succ_lt_succ i.isLt⟩)
+          (oracle ⟨0, Nat.zero_lt_succ fuel⟩ s q).2
+          idx' (by omega) st qry h_st h_qry
+
+/-- If two oracles agree at every step on the `(state, query)` encountered
+during execution with `oracle₁`, then `runWithState` produces the same result. -/
+theorem runWithState_eq_of_oracle_agree_on_trace {Q R A S : Type}
+    : ∀ (interaction : OracleInteraction Q R A)
+        (fuel : Nat) (oracle₁ oracle₂ : Fin fuel → S → Q → R × S)
+        (s : S),
+        (∀ (k : Nat) (hk : k < fuel) (st : S) (q : Q),
+          stateBeforeWithState interaction fuel oracle₁ s k = some st →
+          queryAtWithState interaction fuel oracle₁ s k = some q →
+          oracle₁ ⟨k, hk⟩ st q = oracle₂ ⟨k, hk⟩ st q) →
+        interaction.runWithState fuel oracle₁ s =
+        interaction.runWithState fuel oracle₂ s := by
+  intro interaction fuel
+  induction fuel generalizing interaction with
+  | zero => intro _ _ _ _; cases interaction <;> rfl
+  | succ n ih =>
+    intro oracle₁ oracle₂ s h
+    cases interaction with
+    | done => rfl
+    | query q k =>
+      simp only [OracleInteraction.runWithState]
+      have h0 : oracle₁ ⟨0, Nat.zero_lt_succ n⟩ s q =
+          oracle₂ ⟨0, Nat.zero_lt_succ n⟩ s q :=
+        h 0 (Nat.zero_lt_succ n) s q rfl rfl
+      rw [h0]
+      have h_ih := ih (k (oracle₂ ⟨0, Nat.zero_lt_succ n⟩ s q).1)
+        (fun (i : Fin n) => oracle₁ ⟨i.val + 1, Nat.succ_lt_succ i.isLt⟩)
+        (fun (i : Fin n) => oracle₂ ⟨i.val + 1, Nat.succ_lt_succ i.isLt⟩)
+        (oracle₂ ⟨0, Nat.zero_lt_succ n⟩ s q).2
+        (fun k' hk' st' q' h_state h_query => by
+          have := h (k' + 1) (by omega) st' q'
+            (by simp only [stateBeforeWithState]; rw [h0]; exact h_state)
+            (by simp only [queryAtWithState]; rw [h0]; exact h_query)
+          exact this)
+      rw [h_ih]
+
+open Cslib.Probability in
+/-- If two oracle families, parameterized by per-step randomness types
+`S₁` and `S₂`, produce the same marginal distribution at each step
+(for all queries and all test functions), then the expected value of
+any function of the `run` result is the same.
+
+This is the key tool for proving that swapping per-step randomness
+(e.g., real prover randomness ↔ simulator randomness in HVZK)
+preserves the interaction's expected outcome. The proof is by
+induction on `fuel`: at each step, we factor the expectation into
+the head component (which we swap using `h_marginal`) and the tail
+(which we swap using the inductive hypothesis). -/
+theorem run_uniformExpect_oracle_eq
+    {Q R A : Type} {S₁ S₂ : Type}
+    [Fintype S₁] [Nonempty S₁] [Fintype S₂] [Nonempty S₂]
+    (fuel : ℕ)
+    (interaction : OracleInteraction Q R A)
+    (oracle₁ : Fin fuel → S₁ → Q → R)
+    (oracle₂ : Fin fuel → S₂ → Q → R)
+    (h_marginal : ∀ (i : Fin fuel) (q : Q) (g : R → ℝ),
+      uniformExpect S₁ (fun s => g (oracle₁ i s q)) =
+      uniformExpect S₂ (fun s => g (oracle₂ i s q)))
+    (f : Option (List Q × A) → ℝ) :
+    uniformExpect (Fin fuel → S₁)
+      (fun ss => f (interaction.run fuel (fun i => oracle₁ i (ss i)))) =
+    uniformExpect (Fin fuel → S₂)
+      (fun ss => f (interaction.run fuel (fun i => oracle₂ i (ss i)))) := by
+  induction fuel generalizing interaction f with
+  | zero =>
+    cases interaction with
+    | done a =>
+      change uniformExpect _ (fun _ => f (some ([], a))) =
+             uniformExpect _ (fun _ => f (some ([], a)))
+      rw [uniformExpect_const, uniformExpect_const]
+    | query q k =>
+      change uniformExpect _ (fun _ => f none) =
+             uniformExpect _ (fun _ => f none)
+      rw [uniformExpect_const, uniformExpect_const]
+  | succ n ih =>
+    cases interaction with
+    | done a =>
+      change uniformExpect _ (fun _ => f (some ([], a))) =
+             uniformExpect _ (fun _ => f (some ([], a)))
+      rw [uniformExpect_const, uniformExpect_const]
+    | query q k =>
+      let shifted₁ : Fin n → S₁ → Q → R :=
+        fun j => oracle₁ ⟨j.val + 1, Nat.succ_lt_succ j.isLt⟩
+      let shifted₂ : Fin n → S₂ → Q → R :=
+        fun j => oracle₂ ⟨j.val + 1, Nat.succ_lt_succ j.isLt⟩
+      have h_shifted : ∀ (j : Fin n) (q' : Q) (g : R → ℝ),
+          uniformExpect S₁ (fun s => g (shifted₁ j s q')) =
+          uniformExpect S₂ (fun s => g (shifted₂ j s q')) :=
+        fun j => h_marginal ⟨j.val + 1, Nat.succ_lt_succ j.isLt⟩
+      let postF : Option (List Q × A) → ℝ := fun result =>
+        f (match result with | none => none | some (qs, a) => some (q :: qs, a))
+      have lhs_conv :
+          uniformExpect (Fin (n + 1) → S₁)
+            (fun ss => f (OracleInteraction.run (.query q k) (n + 1)
+              (fun i => oracle₁ i (ss i)))) =
+          uniformExpect S₁ (fun s₀ =>
+            uniformExpect (Fin n → S₁) (fun ss' =>
+              postF ((k (oracle₁ ⟨0, Nat.zero_lt_succ n⟩ s₀ q)).run n
+                (fun j => shifted₁ j (ss' j))))) := by
+        rw [show (fun ss : Fin (n + 1) → S₁ =>
+                f (OracleInteraction.run (.query q k) (n + 1)
+                  (fun i => oracle₁ i (ss i)))) =
+              ((fun p : S₁ × (Fin n → S₁) =>
+                postF ((k (oracle₁ ⟨0, Nat.zero_lt_succ n⟩ p.1 q)).run n
+                  (fun j => shifted₁ j (p.2 j)))) ∘
+              (Fin.consEquiv (fun _ : Fin (n + 1) => S₁)).symm) from by
+            funext ss; rfl
+          , uniformExpect_congr, uniformExpect_prod]
+      have rhs_conv :
+          uniformExpect (Fin (n + 1) → S₂)
+            (fun ss => f (OracleInteraction.run (.query q k) (n + 1)
+              (fun i => oracle₂ i (ss i)))) =
+          uniformExpect S₂ (fun s₀ =>
+            uniformExpect (Fin n → S₂) (fun ss' =>
+              postF ((k (oracle₂ ⟨0, Nat.zero_lt_succ n⟩ s₀ q)).run n
+                (fun j => shifted₂ j (ss' j))))) := by
+        rw [show (fun ss : Fin (n + 1) → S₂ =>
+                f (OracleInteraction.run (.query q k) (n + 1)
+                  (fun i => oracle₂ i (ss i)))) =
+              ((fun p : S₂ × (Fin n → S₂) =>
+                postF ((k (oracle₂ ⟨0, Nat.zero_lt_succ n⟩ p.1 q)).run n
+                  (fun j => shifted₂ j (p.2 j)))) ∘
+              (Fin.consEquiv (fun _ : Fin (n + 1) => S₂)).symm) from by
+            funext ss; rfl
+          , uniformExpect_congr, uniformExpect_prod]
+      rw [lhs_conv, rhs_conv]
+      conv_lhs =>
+        arg 2; ext s₀
+        rw [ih (k (oracle₁ ⟨0, Nat.zero_lt_succ n⟩ s₀ q)) shifted₁ shifted₂
+          h_shifted postF]
+      exact h_marginal ⟨0, Nat.zero_lt_succ n⟩ q
+        (fun r => uniformExpect (Fin n → S₂) (fun ss' =>
+          postF ((k r).run n (fun j => shifted₂ j (ss' j)))))
+
+open Cslib.Probability in
+/-- Stateful version of `run_uniformExpect_oracle_eq`. If two oracle
+families, parameterized by per-step randomness types `S₁` and `S₂` and
+threading state of type `State`, produce the same marginal distribution
+at each step (for all states, queries, and test functions), then the
+expected value of any function of the `runWithState` result is the same.
+
+The proof mirrors `run_uniformExpect_oracle_eq` by induction on `fuel`. -/
+theorem runWithState_uniformExpect_oracle_eq
+    {Q R A State : Type} {S₁ S₂ : Type}
+    [Fintype S₁] [Nonempty S₁] [Fintype S₂] [Nonempty S₂]
+    (fuel : ℕ)
+    (interaction : OracleInteraction Q R A)
+    (oracle₁ : Fin fuel → S₁ → State → Q → (R × State))
+    (oracle₂ : Fin fuel → S₂ → State → Q → (R × State))
+    (h_marginal : ∀ (i : Fin fuel) (st : State) (q : Q)
+      (g : R × State → ℝ),
+      uniformExpect S₁ (fun s => g (oracle₁ i s st q)) =
+      uniformExpect S₂ (fun s => g (oracle₂ i s st q)))
+    (initState : State)
+    (f : Option (List Q × A × State) → ℝ) :
+    uniformExpect (Fin fuel → S₁)
+      (fun ss => f (interaction.runWithState fuel
+        (fun i st q => oracle₁ i (ss i) st q) initState)) =
+    uniformExpect (Fin fuel → S₂)
+      (fun ss => f (interaction.runWithState fuel
+        (fun i st q => oracle₂ i (ss i) st q) initState)) := by
+  induction fuel generalizing interaction initState f with
+  | zero =>
+    cases interaction with
+    | done a =>
+      change uniformExpect _ (fun _ => f (some ([], a, initState))) =
+             uniformExpect _ (fun _ => f (some ([], a, initState)))
+      rw [uniformExpect_const, uniformExpect_const]
+    | query q k =>
+      change uniformExpect _ (fun _ => f none) =
+             uniformExpect _ (fun _ => f none)
+      rw [uniformExpect_const, uniformExpect_const]
+  | succ n ih =>
+    cases interaction with
+    | done a =>
+      change uniformExpect _ (fun _ => f (some ([], a, initState))) =
+             uniformExpect _ (fun _ => f (some ([], a, initState)))
+      rw [uniformExpect_const, uniformExpect_const]
+    | query q k =>
+      let shifted₁ : Fin n → S₁ → State → Q → (R × State) :=
+        fun j => oracle₁ ⟨j.val + 1, Nat.succ_lt_succ j.isLt⟩
+      let shifted₂ : Fin n → S₂ → State → Q → (R × State) :=
+        fun j => oracle₂ ⟨j.val + 1, Nat.succ_lt_succ j.isLt⟩
+      have h_shifted : ∀ (j : Fin n) (st : State) (q' : Q)
+          (g : R × State → ℝ),
+          uniformExpect S₁ (fun s => g (shifted₁ j s st q')) =
+          uniformExpect S₂ (fun s => g (shifted₂ j s st q')) :=
+        fun j => h_marginal ⟨j.val + 1, Nat.succ_lt_succ j.isLt⟩
+      let postF : Option (List Q × A × State) → ℝ := fun result =>
+        f (match result with
+           | none => none
+           | some (qs, a, sf) => some (q :: qs, a, sf))
+      have lhs_conv :
+          uniformExpect (Fin (n + 1) → S₁)
+            (fun ss => f (OracleInteraction.runWithState (.query q k) (n + 1)
+              (fun i st q' => oracle₁ i (ss i) st q') initState)) =
+          uniformExpect S₁ (fun s₀ =>
+            uniformExpect (Fin n → S₁) (fun ss' =>
+              postF ((k (oracle₁ ⟨0, Nat.zero_lt_succ n⟩ s₀ initState q).1).runWithState n
+                (fun j st q' => shifted₁ j (ss' j) st q')
+                (oracle₁ ⟨0, Nat.zero_lt_succ n⟩ s₀ initState q).2))) := by
+        rw [show (fun ss : Fin (n + 1) → S₁ =>
+                f (OracleInteraction.runWithState (.query q k) (n + 1)
+                  (fun i st q' => oracle₁ i (ss i) st q') initState)) =
+              ((fun p : S₁ × (Fin n → S₁) =>
+                postF ((k (oracle₁ ⟨0, Nat.zero_lt_succ n⟩ p.1 initState q).1).runWithState n
+                  (fun j st q' => shifted₁ j (p.2 j) st q')
+                  (oracle₁ ⟨0, Nat.zero_lt_succ n⟩ p.1 initState q).2)) ∘
+              (Fin.consEquiv (fun _ : Fin (n + 1) => S₁)).symm) from by
+            funext ss; rfl
+          , uniformExpect_congr, uniformExpect_prod]
+      have rhs_conv :
+          uniformExpect (Fin (n + 1) → S₂)
+            (fun ss => f (OracleInteraction.runWithState (.query q k) (n + 1)
+              (fun i st q' => oracle₂ i (ss i) st q') initState)) =
+          uniformExpect S₂ (fun s₀ =>
+            uniformExpect (Fin n → S₂) (fun ss' =>
+              postF ((k (oracle₂ ⟨0, Nat.zero_lt_succ n⟩ s₀ initState q).1).runWithState n
+                (fun j st q' => shifted₂ j (ss' j) st q')
+                (oracle₂ ⟨0, Nat.zero_lt_succ n⟩ s₀ initState q).2))) := by
+        rw [show (fun ss : Fin (n + 1) → S₂ =>
+                f (OracleInteraction.runWithState (.query q k) (n + 1)
+                  (fun i st q' => oracle₂ i (ss i) st q') initState)) =
+              ((fun p : S₂ × (Fin n → S₂) =>
+                postF ((k (oracle₂ ⟨0, Nat.zero_lt_succ n⟩ p.1 initState q).1).runWithState n
+                  (fun j st q' => shifted₂ j (p.2 j) st q')
+                  (oracle₂ ⟨0, Nat.zero_lt_succ n⟩ p.1 initState q).2)) ∘
+              (Fin.consEquiv (fun _ : Fin (n + 1) => S₂)).symm) from by
+            funext ss; rfl
+          , uniformExpect_congr, uniformExpect_prod]
+      rw [lhs_conv, rhs_conv]
+      conv_lhs =>
+        arg 2; ext s₀
+        rw [ih (k (oracle₁ ⟨0, Nat.zero_lt_succ n⟩ s₀ initState q).1)
+          shifted₁ shifted₂ h_shifted
+          (oracle₁ ⟨0, Nat.zero_lt_succ n⟩ s₀ initState q).2
+          postF]
+      exact h_marginal ⟨0, Nat.zero_lt_succ n⟩ initState q
+        (fun p => uniformExpect (Fin n → S₂) (fun ss' =>
+          postF ((k p.1).runWithState n
+            (fun j st q' => shifted₂ j (ss' j) st q') p.2)))
 
 end

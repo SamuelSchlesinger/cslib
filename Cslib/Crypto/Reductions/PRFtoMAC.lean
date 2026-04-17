@@ -6,6 +6,7 @@ Authors: Samuel Schlesinger
 
 module
 
+public import Cslib.Crypto.Foundations.GameHop
 public import Cslib.Crypto.Primitives.PRF
 public import Cslib.Crypto.Primitives.MAC
 
@@ -28,6 +29,7 @@ Given a PRF `F : Key n → Input n → Output n`, we define:
 * `PRF.toMACScheme` — the construction
 * `PRF.toMACScheme_correct` — correctness
 * `PRF.toMACScheme_reduction_bound` — EUF-CMA advantage ≤ PRF advantage + ideal gap
+* `PRF.toMACScheme_gameHop` — the reduction packaged as a `GameHop`
 * `PRF.toMACScheme_secure` — PRF security + negligible ideal gap → EUF-CMA security
 
 ## References
@@ -224,6 +226,47 @@ theorem PRF.toMACScheme_reduction_bound (F : PRF)
     F.simulateMACBody A n rf)
   linarith [le_abs_self (real - ideal)]
 
+/-! ### Game-hop packaging -/
+
+/-- Non-negativity of the EUF-CMA advantage: the game body returns `0`
+or `boolToReal`, both of which are non-negative, and `uniformExpect`
+preserves non-negativity. -/
+private theorem PRF.toMACScheme_advantage_nonneg (F : PRF)
+    [∀ n, DecidableEq (F.Output n)]
+    [instDI : ∀ n, DecidableEq (F.Input n)]
+    (A : MACScheme.EUF_CMA_Adversary F.toMACScheme) (n : ℕ) :
+    0 ≤ (@MACScheme.EUF_CMA_Game F.toMACScheme instDI).advantage A n := by
+  letI := F.keyFintype n; letI := F.keyNonempty n
+  simp only [MACScheme.EUF_CMA_Game]
+  apply uniformExpect_nonneg
+  intro k
+  split
+  · exact le_refl 0
+  · exact boolToReal_nonneg _
+
+/-- Non-negativity of the ideal-world gap. -/
+private theorem PRF.EUF_CMA_idealWorldGap_nonneg (F : PRF)
+    [∀ n, DecidableEq (F.Output n)]
+    [∀ n, DecidableEq (F.Input n)]
+    (A : MACScheme.EUF_CMA_Adversary F.toMACScheme) (n : ℕ) :
+    0 ≤ F.EUF_CMA_idealWorldGap A n := by
+  letI := F.funFintype n; letI := F.funNonempty n
+  exact uniformExpect_nonneg _ fun rf => F.simulateMACBody_nonneg A n rf
+
+/-- The PRF → EUF-CMA reduction as a `GameHop`.
+
+This packages `toMACScheme_reduction_bound` into the
+sequence-of-games DSL so that the final security theorem is a direct
+application of `GameHop.advantage_negligible` — no per-reduction
+triangle-inequality / `abs_of_nonneg` boilerplate. -/
+noncomputable def PRF.toMACScheme_gameHop (F : PRF)
+    [∀ n, DecidableEq (F.Output n)]
+    [instDI : ∀ n, DecidableEq (F.Input n)] :
+    GameHop (@MACScheme.EUF_CMA_Game F.toMACScheme instDI) F.SecurityGame where
+  reduce := F.mkPRFAdversaryFromMAC
+  gap := F.EUF_CMA_idealWorldGap
+  advantage_le := F.toMACScheme_reduction_bound
+
 /-- **PRF security + negligible ideal-world gap → EUF-CMA security.** -/
 theorem PRF.toMACScheme_secure (F : PRF)
     [∀ n, DecidableEq (F.Output n)]
@@ -232,23 +275,11 @@ theorem PRF.toMACScheme_secure (F : PRF)
     (A : MACScheme.EUF_CMA_Adversary F.toMACScheme)
     (hGap : Negligible (F.EUF_CMA_idealWorldGap A)) :
     Negligible (fun n =>
-      (@MACScheme.EUF_CMA_Game F.toMACScheme instDI).advantage A n) := by
-  let B := F.mkPRFAdversaryFromMAC A
-  apply Negligible.mono (Negligible.add (hF B) hGap)
-  refine ⟨0, fun n _ => ?_⟩
-  letI := F.keyFintype n; letI := F.keyNonempty n
-  letI := F.funFintype n; letI := F.funNonempty n
-  have h1 : 0 ≤ (@MACScheme.EUF_CMA_Game F.toMACScheme instDI).advantage A n := by
-    simp only [MACScheme.EUF_CMA_Game]
-    apply uniformExpect_nonneg
-    intro k
-    split
-    · exact le_refl 0
-    · exact boolToReal_nonneg _
-  have h2 : 0 ≤ F.SecurityGame.advantage B n := abs_nonneg _
-  have h3 : 0 ≤ F.EUF_CMA_idealWorldGap A n :=
-    uniformExpect_nonneg _ fun rf => F.simulateMACBody_nonneg A n rf
-  rw [abs_of_nonneg h1, abs_of_nonneg (by linarith)]
-  exact F.toMACScheme_reduction_bound A n
+      (@MACScheme.EUF_CMA_Game F.toMACScheme instDI).advantage A n) :=
+  F.toMACScheme_gameHop.advantage_negligible A
+    (hF _) hGap
+    (F.toMACScheme_advantage_nonneg A)
+    (fun _ => abs_nonneg _)
+    (F.EUF_CMA_idealWorldGap_nonneg A)
 
 end

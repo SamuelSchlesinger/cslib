@@ -6,6 +6,7 @@ Authors: Samuel Schlesinger
 
 module
 
+public import Cslib.Crypto.Foundations.GameHop
 public import Cslib.Crypto.Primitives.PRG
 public import Cslib.Crypto.Primitives.Encryption
 
@@ -149,16 +150,15 @@ noncomputable def PRG.IND_CPA_idealWorldGap (G : PRG)
       G.simulateStreamBody A n x.2 x.1)
    - 1/2|
 
-/-- **PRG → IND-CPA reduction bound.** -/
+/-- **PRG → IND-CPA reduction bound (explicit form).** -/
 theorem PRG.toEncryptionScheme_reduction_bound (G : PRG)
     [∀ n, AddCommGroup (G.Output n)]
     (A : IND_CPA_Adversary G.toEncryptionScheme) :
-    ∃ (B : PRG.DistinguishingAdversary G),
-      ∀ n, (IND_CPA_Game G.toEncryptionScheme).advantage A n ≤
-        G.SecurityGame.advantage B n +
+    ∀ n, (IND_CPA_Game G.toEncryptionScheme).advantage A n ≤
+        G.SecurityGame.advantage (G.mkPRGAdversary A) n +
         G.IND_CPA_idealWorldGap A n := by
-  let B := G.mkPRGAdversary A
-  refine ⟨B, fun n => ?_⟩
+  intro n
+  set B := G.mkPRGAdversary A
   letI := G.seedFintype n
   letI := G.seedNonempty n
   letI := G.outputFintype n
@@ -238,6 +238,14 @@ theorem PRG.toEncryptionScheme_reduction_bound (G : PRG)
       rw [h_split]
       exact abs_add_le _ _
 
+/-- The PRG → IND-CPA reduction packaged as a `GameHop`. -/
+noncomputable def PRG.toEncryptionScheme_gameHop (G : PRG)
+    [∀ n, AddCommGroup (G.Output n)] :
+    GameHop (IND_CPA_Game G.toEncryptionScheme) G.SecurityGame where
+  reduce := G.mkPRGAdversary
+  gap := G.IND_CPA_idealWorldGap
+  advantage_le := G.toEncryptionScheme_reduction_bound
+
 /-- **PRG security → IND-CPA security** for the stream cipher,
 given that the ideal-world gap is negligible. -/
 theorem PRG.toEncryptionScheme_secure (G : PRG)
@@ -246,15 +254,11 @@ theorem PRG.toEncryptionScheme_secure (G : PRG)
     (A : IND_CPA_Adversary G.toEncryptionScheme)
     (hGap : Negligible (G.IND_CPA_idealWorldGap A)) :
     Negligible (fun n =>
-      (IND_CPA_Game G.toEncryptionScheme).advantage A n) := by
-  obtain ⟨B, hB⟩ := G.toEncryptionScheme_reduction_bound A
-  apply Negligible.mono (Negligible.add (hG B) hGap)
-  refine ⟨0, fun n _ => ?_⟩
-  have h1 : 0 ≤ (IND_CPA_Game G.toEncryptionScheme).advantage A n := by
-    simp only [IND_CPA_Game]; exact abs_nonneg _
-  have h2 : 0 ≤ G.SecurityGame.advantage B n := abs_nonneg _
-  have h3 : 0 ≤ G.IND_CPA_idealWorldGap A n := abs_nonneg _
-  rw [abs_of_nonneg h1, abs_of_nonneg (by linarith)]
-  exact hB n
+      (IND_CPA_Game G.toEncryptionScheme).advantage A n) :=
+  G.toEncryptionScheme_gameHop.advantage_negligible A
+    (hG _) hGap
+    (fun _ => by simp only [IND_CPA_Game]; exact abs_nonneg _)
+    (fun _ => abs_nonneg _)
+    (fun _ => abs_nonneg _)
 
 end

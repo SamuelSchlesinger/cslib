@@ -496,6 +496,26 @@ theorem birthday_bound {T : Type*} [Fintype T] [Nonempty T] [DecidableEq T] (q :
     _ ≤ (q : ℝ) ^ 2 / Fintype.card T := by
         simp [Fintype.card_prod, Fintype.card_fin]; ring_nf; exact le_refl _
 
+/-- **Evaluate-at-point under a uniform random function**:
+`E_{H : X → Y}[g(H x₀)] = E_{y : Y}[g(y)]`.
+
+Sampling a function uniformly and evaluating at a point has the same
+distribution as sampling the result directly. -/
+theorem uniformExpect_eval_at_point
+    {X Y : Type*} [Fintype X] [Nonempty X] [DecidableEq X]
+    [Fintype Y] [Nonempty Y]
+    (x₀ : X) (g : Y → ℝ) :
+    uniformExpect (X → Y) (fun H => g (H x₀)) =
+    uniformExpect Y g := by
+  let e := Equiv.funSplitAt x₀ Y
+  have h_comp :
+      (fun H : X → Y => g (H x₀)) =
+      (fun p : Y × ({x : X // x ≠ x₀} → Y) => g p.1) ∘ e := by
+    funext H
+    simp [e, Equiv.funSplitAt, Equiv.piSplitAt]
+  rw [h_comp, uniformExpect_congr]
+  exact uniformExpect_prod_ignore_snd g
+
 end Cslib.Probability
 
 end

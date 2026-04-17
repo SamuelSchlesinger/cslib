@@ -6,6 +6,7 @@ Authors: Samuel Schlesinger
 
 module
 
+public import Cslib.Crypto.Foundations.GameHop
 public import Cslib.Crypto.Primitives.PRF
 public import Cslib.Crypto.Primitives.Encryption
 
@@ -227,13 +228,13 @@ noncomputable def IND_CPA_idealWorldGap (F : PRF)
       F.simulateBody A n x.2 x.1)
    - 1/2|
 
-/-- **PRF → IND-CPA reduction bound.**
+/-- **PRF → IND-CPA reduction bound (explicit form).**
 
-For any IND-CPA adversary `A`, there exists a PRF adversary `B` such
-that for all `n`:
+For any IND-CPA adversary `A`, the PRF distinguisher
+`F.mkPRFAdversary A` satisfies
 $$\mathrm{IND\text{-}CPA~advantage}(A, n)
-  \le \mathrm{PRF~advantage}(B, n)
-    + \mathrm{idealWorldGap}(A, n)$$
+  \le \mathrm{PRF~advantage}(\mathrm{mkPRFAdversary}\,A, n)
+    + \mathrm{idealWorldGap}(A, n).$$
 
 The first term is negligible by PRF security; the second term captures
 the residual advantage in the ideal world. -/
@@ -242,12 +243,11 @@ theorem PRF.toEncryptionScheme_reduction_bound (F : PRF)
     [∀ n, Nonempty (F.Output n)]
     [∀ n, Fintype (F.Input n)] [∀ n, Nonempty (F.Input n)]
     (A : IND_CPA_Adversary F.toEncryptionScheme) :
-    ∃ (B : PRF.OracleAdversary F),
-      ∀ n, (IND_CPA_Game F.toEncryptionScheme).advantage A n ≤
-        F.SecurityGame.advantage B n +
+    ∀ n, (IND_CPA_Game F.toEncryptionScheme).advantage A n ≤
+        F.SecurityGame.advantage (F.mkPRFAdversary A) n +
         IND_CPA_idealWorldGap F A n := by
-  let B := F.mkPRFAdversary A
-  refine ⟨B, fun n => ?_⟩
+  intro n
+  set B := F.mkPRFAdversary A
   letI := F.keyFintype n
   letI := F.keyNonempty n
   letI := F.funFintype n
@@ -326,6 +326,16 @@ theorem PRF.toEncryptionScheme_reduction_bound (F : PRF)
       rw [h_split]
       exact abs_add_le _ _
 
+/-- The PRF → IND-CPA reduction packaged as a `GameHop`. -/
+noncomputable def PRF.toEncryptionScheme_gameHop (F : PRF)
+    [∀ n, AddCommGroup (F.Output n)]
+    [∀ n, Nonempty (F.Output n)]
+    [∀ n, Fintype (F.Input n)] [∀ n, Nonempty (F.Input n)] :
+    GameHop (IND_CPA_Game F.toEncryptionScheme) F.SecurityGame where
+  reduce := F.mkPRFAdversary
+  gap := IND_CPA_idealWorldGap F
+  advantage_le := F.toEncryptionScheme_reduction_bound
+
 /-- **PRF security + negligible ideal-world gap → IND-CPA security.**
 
 This is the standard PRF→IND-CPA theorem, correctly formulated with
@@ -339,17 +349,12 @@ theorem PRF.toEncryptionScheme_secure' (F : PRF)
     (A : IND_CPA_Adversary F.toEncryptionScheme)
     (hGap : Negligible (IND_CPA_idealWorldGap F A)) :
     Negligible (fun n =>
-      (IND_CPA_Game F.toEncryptionScheme).advantage A n) := by
-  obtain ⟨B, hB⟩ := F.toEncryptionScheme_reduction_bound A
-  apply Negligible.mono (Negligible.add (hF B) hGap)
-  refine ⟨0, fun n _ => ?_⟩
-  have h1 : 0 ≤ (IND_CPA_Game F.toEncryptionScheme).advantage A n := by
-    simp only [IND_CPA_Game]; exact abs_nonneg _
-  have h2 : 0 ≤ F.SecurityGame.advantage B n := by
-    simp only [PRF.SecurityGame]; exact abs_nonneg _
-  have h3 : 0 ≤ IND_CPA_idealWorldGap F A n := abs_nonneg _
-  rw [abs_of_nonneg h1, abs_of_nonneg (by linarith)]
-  exact hB n
+      (IND_CPA_Game F.toEncryptionScheme).advantage A n) :=
+  F.toEncryptionScheme_gameHop.advantage_negligible A
+    (hF _) hGap
+    (fun _ => by simp only [IND_CPA_Game]; exact abs_nonneg _)
+    (fun _ => abs_nonneg _)
+    (fun _ => abs_nonneg _)
 
 /-- **PRF security + negligible gap for all admissible adversaries
 → IND-CPA security against that class.** -/

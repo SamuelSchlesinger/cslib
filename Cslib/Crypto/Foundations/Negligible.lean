@@ -205,6 +205,30 @@ theorem Negligible.mul_polyBounded {f g : ℕ → ℝ}
         rw [pow_add, one_div, mul_inv, mul_assoc,
           inv_mul_cancel₀ hnd, mul_one, ← one_div]
 
+/-- **Right-scalar form** of `Negligible.mul_polyBounded`: if `g` is
+polynomially bounded and `f` is negligible, then `g · f` is negligible.
+
+This is just `mul_polyBounded` composed with `mul_comm`, but naming it
+removes a `.mono ⟨0, fun n _ => le_of_eq (congr_arg abs (mul_comm _ _))⟩`
+from every caller. -/
+theorem Negligible.polyBounded_mul {f g : ℕ → ℝ}
+    (hf : Negligible f) (hg : PolynomiallyBounded g) :
+    Negligible (fun n => g n * f n) := by
+  have h := hf.mul_polyBounded hg
+  refine h.mono ⟨0, fun n _ => ?_⟩
+  rw [mul_comm (f n) (g n)]
+
+/-- **Quotient form**: if `g` is polynomially bounded and `fun n => 1 / f n` is
+negligible, then `fun n => g n / f n` is negligible.
+
+Typical use: `g = q` (query count, polynomially bounded), `f n = |Challenge n|`
+(challenge space, super-polynomial), so `q / |Challenge|` is negligible. -/
+theorem Negligible.polyBounded_div {f g : ℕ → ℝ}
+    (hf : Negligible (fun n => 1 / f n)) (hg : PolynomiallyBounded g) :
+    Negligible (fun n => g n / f n) := by
+  refine (hf.polyBounded_mul hg).mono ⟨0, fun n _ => ?_⟩
+  rw [mul_one_div]
+
 /-- The product of two polynomially bounded functions is polynomially bounded.
 
 If `|f(n)| ≤ p(n)` and `|g(n)| ≤ q(n)` for natural-number polynomials `p, q`,

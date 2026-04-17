@@ -520,6 +520,29 @@ theorem forking_lemma
         have hq_pos : (0 : ℝ) < q := Nat.cast_pos.mpr hq
         linarith [div_le_div_of_nonneg_right hj (le_of_lt hq_pos)]
 
+/-- If two `forkAcceptProb` computations with different coin types produce
+the same expected payoff for every challenge assignment, they are equal.
+
+Useful when two games differ only in how per-execution randomness is sampled
+(e.g., real prover randomness vs. HVZK simulator randomness): if the
+challenge-conditional marginals match, the overall acceptance probabilities
+do too. -/
+theorem forkAcceptProb_coins_eq
+    {α : Type} {C₁ C₂ R : Type}
+    [Fintype C₁] [Nonempty C₁] [Fintype C₂] [Nonempty C₂]
+    [Fintype R] [Nonempty R] (q : ℕ)
+    (run₁ : C₁ → (Fin q → R) → Option (Fin q × α))
+    (run₂ : C₂ → (Fin q → R) → Option (Fin q × α))
+    (h : ∀ (ch : Fin q → R) (f : Option (Fin q × α) → ℝ),
+      uniformExpect C₁ (fun c => f (run₁ c ch)) =
+      uniformExpect C₂ (fun c => f (run₂ c ch))) :
+    forkAcceptProb C₁ R q run₁ = forkAcceptProb C₂ R q run₂ := by
+  simp only [forkAcceptProb]
+  conv_lhs => rw [uniformExpect_prod, uniformExpect_comm]
+  conv_rhs => rw [uniformExpect_prod, uniformExpect_comm]
+  congr 1; ext ch
+  exact h ch (fun o => match o with | none => 0 | some _ => 1)
+
 end Cslib.Probability
 
 end

@@ -165,6 +165,26 @@ noncomputable def romCmaWinCondition {R : EffectiveRelation}
     else
       0
 
+/-- The ROM EUF-CMA win-condition is always non-negative: the only
+returned values are `0` and `boolToReal (...)`. -/
+theorem romCmaWinCondition_nonneg {R : EffectiveRelation}
+    (P : SigmaProtocol R) (Msg : ℕ → Type) [∀ n, DecidableEq (Msg n)]
+    (n q : ℕ) (y : R.Statement n) [DecidableEq (P.Commitment n)]
+    (r : Option (List (Msg n ⊕ (Msg n × P.Commitment n)) ×
+      (Msg n × P.Commitment n × P.Response n) ×
+      List ((Msg n × P.Commitment n) × P.Challenge n))) :
+    0 ≤ romCmaWinCondition P Msg n q y r := by
+  cases r with
+  | none => exact le_refl 0
+  | some val =>
+    obtain ⟨_, ⟨_, _, _⟩, _⟩ := val
+    dsimp [romCmaWinCondition]
+    split
+    · split
+      · exact boolToReal_nonneg _
+      · exact le_refl 0
+    · exact le_refl 0
+
 /-- The **ROM EUF-CMA security game** for a Fiat-Shamir signature scheme.
 
 The game (proof-friendly ROM-EUF-CMA variant):
@@ -196,6 +216,19 @@ noncomputable def ROM_EUF_CMA_Game {R : EffectiveRelation}
         romCmaWinCondition P Msg n q y
           ((A.interact n y).runWithState q (romCmaOracle P Msg n w y rs Hs) []))
 
+/-- The ROM EUF-CMA advantage is always non-negative. -/
+theorem ROM_EUF_CMA_Game_advantage_nonneg {R : EffectiveRelation}
+    (P : SigmaProtocol R) (Msg : ℕ → Type)
+    [∀ n, DecidableEq (Msg n)]
+    [∀ n, Fintype (Msg n)] [∀ n, Nonempty (Msg n)]
+    [∀ n, Fintype (R.Witness n)] [∀ n, Nonempty (R.Witness n)]
+    (kg : R.WithKeyGen)
+    (A : ROM_EUF_CMA_Adversary P Msg) (n : ℕ) :
+    0 ≤ (ROM_EUF_CMA_Game P Msg kg).advantage A n := by
+  apply uniformExpect_nonneg
+  intro ⟨⟨_, _⟩, _⟩
+  exact romCmaWinCondition_nonneg P Msg n _ _ _
+
 /-- A **relation solver** is an adversary that attempts to find a
 witness given a statement, using explicit internal randomness. -/
 structure RelationSolver (R : EffectiveRelation) where
@@ -224,5 +257,14 @@ noncomputable def RelationGame (R : EffectiveRelation)
     SecurityGame (RelationSolver R) where
   advantage B n := uniformExpect (R.Witness n × B.Randomness n) (fun ⟨w, r⟩ =>
     boolToReal (decide (R.relation n (B.find n (kg.keyOf n w) r) (kg.keyOf n w))))
+
+/-- The relation-game advantage is always non-negative. -/
+theorem RelationGame_advantage_nonneg {R : EffectiveRelation}
+    (kg : R.WithKeyGen)
+    [∀ n, Fintype (R.Witness n)] [∀ n, Nonempty (R.Witness n)]
+    [∀ n (w : R.Witness n) (y : R.Statement n), Decidable (R.relation n w y)]
+    (B : RelationSolver R) (n : ℕ) :
+    0 ≤ (RelationGame R kg).advantage B n :=
+  uniformExpect_nonneg _ fun _ => boolToReal_nonneg _
 
 end

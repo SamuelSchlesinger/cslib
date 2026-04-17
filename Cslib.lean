@@ -47,6 +47,7 @@ public import Cslib.Computability.URM.Execution
 public import Cslib.Computability.URM.StandardForm
 public import Cslib.Computability.URM.StraightLine
 public import Cslib.Crypto.Assumptions.DiscreteLog
+public import Cslib.Crypto.Foundations.GameHop
 public import Cslib.Crypto.Foundations.Indistinguishability
 public import Cslib.Crypto.Foundations.Negligible
 public import Cslib.Crypto.Foundations.OracleInteraction
