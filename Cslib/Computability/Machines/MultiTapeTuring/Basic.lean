@@ -141,7 +141,7 @@ along any trace from `initCfg s` with nonempty input, tape `0`'s content matches
 -/
 structure HasInputTape {k : ℕ} (tm : MultiTapeTM (k + 1) Symbol) : Prop where
   /-- Every transition writes back the symbol it read on tape `0`. -/
-  readPreserving : ∀ q reads, ((tm.tr q reads).1 0).IsReadPreserving (reads 0)
+  readPreserving : IsReadPreservingOnTape tm.tr 0
   /-- Once the head steps left off the input, no chain of stay-moves on the blank can lead
   to another left step on the blank. -/
   leftBounded : IsBoundedInDirectionOnTape tm.tr 0 .left
@@ -703,6 +703,7 @@ inductive MoveThenStaysOnBlank
       (h_blank : (cfg₂.tapes i).head = none)
       (h_step : tm.step cfg₂ = some cfg₃)
       (h_state : cfg₃.state = some q₃)
+      (h_write : ((tm.tr q₂ fun i => (cfg₂.tapes i).head).1 i).symbol = none)
       (h_no_mov : ((tm.tr q₂ fun i => (cfg₂.tapes i).head).1 i).movement = none) :
       MoveThenStaysOnBlank tm i d q₁ q₃ cfg₃
 
@@ -714,7 +715,7 @@ lemma MoveThenStaysOnBlank.cfg_state_eq
     cfg.state = some q₂ := by
   induction h with
   | move _ h_state _ => exact h_state
-  | stay _ _ _ h_state _ => exact h_state
+  | stay _ _ _ h_state _ _ => exact h_state
 
 /--
 A semantic chain is a witness of the syntactic chain on its endpoint states.
@@ -728,8 +729,8 @@ lemma MoveThenStaysOnBlank.moveThenStays
   | move h_step h_state h_mov =>
     refine .move _ _ _ h_mov ?_
     rw [step_state_eq rfl h_step, h_state]
-  | stay h_prev h_blank h_step h_state h_no_mov ih =>
-    refine .stay _ _ _ ih _ h_blank h_no_mov ?_
+  | stay h_prev h_blank h_step h_state h_write h_no_mov ih =>
+    refine .stay _ _ _ ih _ h_blank h_write h_no_mov ?_
     rw [step_state_eq h_prev.cfg_state_eq h_step, h_state]
 
 end MultiTapeTM
@@ -773,9 +774,9 @@ variable [Inhabited Symbol] [Fintype Symbol]
 /-! ### Head-boundedness invariant -/
 
 /--
-**Head-boundedness invariant at position `p`.** For a configuration `cfg` along a trace
-from `initCfg s` of a TM with a designated input tape, tape `0` of `cfg` is in canonical
-shape `canonicalInputTape s p` for some integer position `p ∈ [-1, s.length]`.
+**Head-boundedness invariant at position `p`.** For a configuration `cfg` tracked by the
+input-tape invariant, tape `0` is in canonical shape `canonicalInputTape s p` for some
+integer position `p ∈ [-1, s.length]`.
 -/
 structure HeadBoundInvariantAt {k : ℕ} (tm : MultiTapeTM (k + 1) Symbol) (s : List Symbol)
     (cfg : tm.Cfg) (p : ℤ) : Prop where
@@ -824,6 +825,22 @@ lemma HeadBoundInvariantAt.Strong.initCfg
   chain_left _ _ h := absurd h (by omega)
   chain_right _ _ h := absurd h (by exact_mod_cast h_pos.ne)
 
+/--
+An arbitrary configuration satisfies the strong head-boundedness invariant when tape `0`
+already has canonical input shape and the head starts strictly inside the input region.
+The endpoint chain witnesses are vacuous in this case.
+-/
+lemma HeadBoundInvariantAt.Strong.of_head_inside
+    {k : ℕ} {tm : MultiTapeTM (k + 1) Symbol} {s : List Symbol} {cfg : tm.Cfg} {p : ℤ}
+    (h_lo : 0 ≤ p) (h_hi : p < (s.length : ℤ))
+    (h_tape : cfg.tapes 0 = canonicalInputTape s p) :
+    HeadBoundInvariantAt.Strong tm s cfg p where
+  pos_lower := by omega
+  pos_upper := by omega
+  tape_eq := h_tape
+  chain_left _ _ h := absurd h (by omega)
+  chain_right _ _ h := absurd h (by omega)
+
 /-- The initial configuration satisfies the trace-level invariant for any input. -/
 lemma HeadBoundInvariantForInput.initCfg
     {k : ℕ} {tm : MultiTapeTM (k + 1) Symbol} (s : List Symbol) :
@@ -847,6 +864,9 @@ lemma HeadBoundInvariantAt.Strong.step
   obtain ⟨q, h_state_q, h_step_q, h_tape0⟩ := h_input.step_tape0_decompose h_step
   have h_head_eq : (cfg.tapes 0).head = none ↔ (p = -1 ∨ p = (s.length : ℤ)) := by
     rw [h_inv.tape_eq]; exact canonicalInputTape_head_eq_none_iff h_inv.pos_lower h_inv.pos_upper
+  have h_write_of_blank (h_blank : (cfg.tapes 0).head = none) :
+      ((tm.tr q fun i => (cfg.tapes i).head).1 0).symbol = none := by
+    rw [h_input.readPreserving q (fun i => (cfg.tapes i).head), h_blank]
   cases hm : ((tm.tr q fun i => (cfg.tapes i).head).1 0).movement with
   | none =>
     refine ⟨p, ⟨h_inv.pos_lower, h_inv.pos_upper, ?_⟩, ?_, ?_⟩
@@ -854,11 +874,13 @@ lemma HeadBoundInvariantAt.Strong.step
     · intro q' hq' hp_neg_one
       have h_blank : (cfg.tapes 0).head = none := h_head_eq.mpr (Or.inl hp_neg_one)
       obtain ⟨q₀, h_chain⟩ := h_inv.chain_left q h_state_q hp_neg_one
-      exact ⟨q₀, MoveThenStaysOnBlank.stay h_chain h_blank h_step hq' hm⟩
+      exact ⟨q₀, MoveThenStaysOnBlank.stay h_chain h_blank h_step hq'
+        (h_write_of_blank h_blank) hm⟩
     · intro q' hq' hp_len
       have h_blank : (cfg.tapes 0).head = none := h_head_eq.mpr (Or.inr hp_len)
       obtain ⟨q₀, h_chain⟩ := h_inv.chain_right q h_state_q hp_len
-      exact ⟨q₀, MoveThenStaysOnBlank.stay h_chain h_blank h_step hq' hm⟩
+      exact ⟨q₀, MoveThenStaysOnBlank.stay h_chain h_blank h_step hq'
+        (h_write_of_blank h_blank) hm⟩
   | some d =>
     cases d with
     | right =>
@@ -929,6 +951,22 @@ lemma HeadBoundInvariantForInput.exists_pos {k : ℕ} {tm : MultiTapeTM (k + 1) 
     rw [canonicalInputTape_nil]; exact h_nil
   · exact ⟨p, h_strong.pos_lower, h_strong.pos_upper, h_strong.tape_eq⟩
 
+/--
+**Quantitative head-position bound from an arbitrary inside-start configuration.** If tape
+`0` starts in canonical input shape with the head inside the input, every reachable
+configuration keeps tape `0` within one cell of the input region.
+-/
+theorem HasInputTape.head_position_bounded_from_cfg
+    {k : ℕ} {tm : MultiTapeTM (k + 1) Symbol} (h_input : tm.HasInputTape)
+    {s : List Symbol} {cfg cfg' : tm.Cfg} {p : ℤ} {t : ℕ}
+    (h_lo : 0 ≤ p) (h_hi : p < (s.length : ℤ))
+    (h_tape : cfg.tapes 0 = canonicalInputTape s p)
+    (h_rel : Relation.RelatesInSteps tm.TransitionRelation cfg cfg' t) :
+    ∃ p' : ℤ, -1 ≤ p' ∧ p' ≤ (s.length : ℤ) ∧
+      cfg'.tapes 0 = canonicalInputTape s p' := by
+  exact (HeadBoundInvariantForInput.relatesInSteps h_input
+    (Or.inr ⟨p, HeadBoundInvariantAt.Strong.of_head_inside h_lo h_hi h_tape⟩) h_rel).exists_pos
+
 /-- **Quantitative head-position bound.** Every configuration reachable from `initCfg s`
 in `t` steps has its tape-`0` content in canonical shape `canonicalInputTape s p` for some
 integer position `p ∈ [-1, s.length]`. In particular, the head on tape `0` stays within
@@ -938,7 +976,11 @@ theorem HasInputTape.head_position_bounded
     {s : List Symbol} {cfg' : tm.Cfg} {t : ℕ}
     (h_rel : Relation.RelatesInSteps tm.TransitionRelation (tm.initCfg s) cfg' t) :
     ∃ p : ℤ, -1 ≤ p ∧ p ≤ (s.length : ℤ) ∧ cfg'.tapes 0 = canonicalInputTape s p :=
-  ((HeadBoundInvariantForInput.initCfg s).relatesInSteps h_input h_rel).exists_pos
+  by
+    by_cases h_pos : 0 < s.length
+    · exact h_input.head_position_bounded_from_cfg (p := 0) (by omega) (by omega)
+        (by rw [canonicalInputTape_zero]; rfl) h_rel
+    · exact ((HeadBoundInvariantForInput.initCfg s).relatesInSteps h_input h_rel).exists_pos
 
 end MultiTapeTM
 
