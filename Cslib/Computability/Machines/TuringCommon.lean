@@ -73,6 +73,15 @@ They are used to phrase head-boundedness of designated input tapes syntactically
 variable {State Symbol : Type} {k : ℕ}
 
 /--
+A transition function is *read-preserving on tape `i`* if every transition writes back the
+symbol read on tape `i`.
+-/
+def IsReadPreservingOnTape
+    (tr : State → (Fin k → Option Symbol) → ((Fin k → Stmt Symbol) × Option State))
+    (i : Fin k) : Prop :=
+  ∀ q reads, ((tr q reads).1 i).symbol = reads i
+
+/--
 State `q` is *harmful in direction `d`* on tape index `i` of transition function `tr` if some
 transition from `q` reads a blank on tape `i` and moves the head on tape `i` in direction `d`.
 
@@ -90,7 +99,8 @@ of the form `q →[move in direction d] q₁ →[stay while reading blank]* q'`.
 
 The initial transition's read is unconstrained — the head may have been on an input cell
 before stepping out to the blank — but every subsequent transition keeps the head fixed at
-the blank, hence reads blank on tape `i` and produces no movement on tape `i`.
+the blank, hence reads blank on tape `i`, writes the blank back, and produces no movement
+on tape `i`.
 -/
 inductive MoveThenStays
     (tr : State → (Fin k → Option Symbol) → ((Fin k → Stmt Symbol) × Option State))
@@ -105,6 +115,7 @@ inductive MoveThenStays
       (h_prev : MoveThenStays tr i d q q')
       (reads : Fin k → Option Symbol)
       (h_reads : reads i = none)
+      (h_write : ((tr q' reads).1 i).symbol = none)
       (h_mov : ((tr q' reads).1 i).movement = none)
       (h_next : (tr q' reads).2 = some q'') :
       MoveThenStays tr i d q q''

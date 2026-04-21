@@ -7,6 +7,7 @@ Authors: Bolton Bailey
 module
 
 public import Cslib.Foundations.Data.StackTape
+public import Mathlib.Algebra.Group.End
 public import Mathlib.Computability.TuringMachine.Tape
 public import Mathlib.Data.Finset.Attr
 public import Mathlib.Tactic.SetLike
@@ -126,6 +127,73 @@ lemma optionMove_nil (m : Option Dir) : (nil : BiTape Symbol).optionMove m = nil
   cases m with
   | none => rfl
   | some d => cases d <;> rfl
+
+/-- The right-move equivalence, with inverse `move_left`. -/
+def moveEquiv : Equiv.Perm (BiTape Symbol) where
+  toFun := move_right
+  invFun := move_left
+  left_inv := move_right_move_left
+  right_inv := move_left_move_right
+
+/-- Move the head by an integer amount of cells: positive values move right, negative
+values move left. -/
+def move_int (t : BiTape Symbol) (delta : ℤ) : BiTape Symbol :=
+  (moveEquiv ^ delta) t
+
+@[simp]
+lemma move_int_zero_eq_id (t : BiTape Symbol) :
+    t.move_int 0 = t := by
+  simp [move_int]
+
+@[simp]
+lemma move_int_one_eq_move_right (t : BiTape Symbol) :
+    t.move_int 1 = t.move_right := by
+  simp [move_int, moveEquiv]
+
+@[simp]
+lemma move_int_neg_one_eq_move_left (t : BiTape Symbol) :
+    t.move_int (-1) = t.move_left := by
+  simp [move_int, moveEquiv]
+
+@[simp]
+lemma move_int_move_right (t : BiTape Symbol) (delta : ℤ) :
+    (t.move_int delta).move_right = t.move_int (delta + 1) := by
+  change moveEquiv ((moveEquiv ^ delta) t) = (moveEquiv ^ (delta + 1)) t
+  rw [← Equiv.Perm.mul_apply, ← zpow_one_add, add_comm]
+
+@[simp]
+lemma move_int_move_left (t : BiTape Symbol) (delta : ℤ) :
+    (t.move_int delta).move_left = t.move_int (delta - 1) := by
+  change (moveEquiv (Symbol := Symbol))⁻¹ ((moveEquiv ^ delta) t) =
+    (moveEquiv ^ (delta - 1)) t
+  rw [← Equiv.Perm.mul_apply, ← zpow_neg_one, ← zpow_add]
+  rw [show -1 + delta = delta - 1 by omega]
+
+@[simp]
+lemma move_int_move_int (t : BiTape Symbol) (delta₁ delta₂ : ℤ) :
+    (t.move_int delta₁).move_int delta₂ = t.move_int (delta₁ + delta₂) := by
+  change (moveEquiv ^ delta₂) ((moveEquiv ^ delta₁) t) =
+    (moveEquiv ^ (delta₁ + delta₂)) t
+  rw [← Equiv.Perm.mul_apply, ← zpow_add, add_comm]
+
+@[simp]
+lemma move_int_nil (delta : ℤ) : (nil : BiTape Symbol).move_int delta = nil := by
+  cases delta with
+  | ofNat n =>
+      induction n with
+      | zero => simp
+      | succ n ih =>
+          rw [show Int.ofNat (n + 1) = (Int.ofNat n : ℤ) + 1 by
+            simp [Int.natCast_succ]]
+          rw [← move_int_move_right, ih, move_right_nil]
+  | negSucc n =>
+      induction n with
+      | zero => simp
+      | succ n ih =>
+          rw [show Int.negSucc (n + 1) = Int.negSucc n - 1 by
+            rw [Int.negSucc_eq, Int.negSucc_eq]
+            omega]
+          rw [← move_int_move_left, ih, move_left_nil]
 
 end Move
 
