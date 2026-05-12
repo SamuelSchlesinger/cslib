@@ -138,5 +138,6 @@ public import Cslib.Logics.Modal.Denotation
 public import Cslib.Logics.Propositional.Defs
 public import Cslib.Logics.Propositional.NaturalDeduction.Basic
 public import Cslib.MachineLearning.PACLearning.Defs
+public import Cslib.MachineLearning.PACLearning.SampleComplexityLower.Helpers
 public import Cslib.MachineLearning.PACLearning.VCDimension
 public import Cslib.Probability.PMF
