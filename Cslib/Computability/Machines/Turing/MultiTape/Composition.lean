@@ -6,7 +6,8 @@ Authors: Samuel Schlesinger
 
 module
 
-public import Cslib.Computability.Machines.Turing.MultiTape.Deterministic
+public import Cslib.Computability.Machines.Turing.MultiTape.TapeLemmas
+import Mathlib.Algebra.BigOperators.Fin
 
 /-!
 # Composition of Deterministic Multi-Tape Turing Machines
@@ -32,6 +33,9 @@ input directly, and the public input/output encoding is unchanged by composition
 
 * `MultiTapeTM.comp`: sequential composition of two deterministic multi-tape Turing machines.
 * `MultiTapeTM.comp_haltsWithOutput`: operational correctness at exact component halting times.
+* `MultiTapeTM.Composition.timeBound` and `MultiTapeTM.Composition.spaceBound`: reusable resource
+  bounds for sequential composition.
+* `MultiTapeTM.comp_computesFunInTimeAndSpace`: correctness and time/space bounds for composition.
 -/
 
 @[expose] public section
@@ -1066,6 +1070,624 @@ theorem comp_haltsWithOutput
     rw [hhalt₁]
     rfl
   · rfl
+
+
+/-- The odd-numbered composite steps of the second phase are precisely the intermediate
+classifier configurations. -/
+private lemma runFrom_secondPhase_odd
+    {firstInput : List Symbol}
+    (firstCfg : Cfg k₀ Symbol State₀ firstInput)
+    {secondInput : List Symbol}
+    (secondCfg : Cfg k₁ Symbol State₁ secondInput)
+    (n : ℕ)
+    (hactive : ∀ m ≤ n, (tm₁.runFrom secondCfg m).state ≠ none) :
+    ∃ boundary,
+      (comp tm₀ tm₁).runFrom
+          (compositionSecondCfg tm₀ tm₁ firstCfg secondCfg) (2 * n + 1) =
+        compositionClassifyCfg tm₀ tm₁ firstCfg
+          (tm₁.runFrom secondCfg (n + 1)) boundary := by
+  rw [(comp tm₀ tm₁).runFrom_add
+    (compositionSecondCfg tm₀ tm₁ firstCfg secondCfg) (2 * n) 1]
+  rw [runFrom_secondPhase tm₀ tm₁ firstCfg secondCfg n
+    (fun m hm => hactive m (by omega))]
+  obtain ⟨q, hq⟩ : ∃ q, (tm₁.runFrom secondCfg n).state = some q := by
+    cases hstate : (tm₁.runFrom secondCfg n).state with
+    | none => exact absurd hstate (hactive n le_rfl)
+    | some q => exact ⟨q, rfl⟩
+  let boundary :=
+    (compositionInputMode (tm₁.runFrom secondCfg n).inputPos).nextBoundary
+      (tm₁.tr q
+        (tm₁.runFrom secondCfg n).inputSymbol
+        (tm₁.runFrom secondCfg n).workTapeSymbols).inputMove
+  refine ⟨boundary, ?_⟩
+  change (comp tm₀ tm₁).step
+    (compositionSecondCfg tm₀ tm₁ firstCfg (tm₁.runFrom secondCfg n)) = _
+  rw [step_compositionSecondCfg tm₀ tm₁ firstCfg
+    (tm₁.runFrom secondCfg n) q hq]
+  simp only [runFrom, Function.iterate_succ_apply', boundary]
+
+/-- Final first-component configuration used throughout the resource analysis. -/
+@[simp] private abbrev firstFinalCfg
+    (tm₀ : MultiTapeTM k₀ Symbol State₀) (input : List Symbol) (u : ℕ) :
+    Cfg k₀ Symbol State₀ input :=
+  tm₀.runFrom (tm₀.initCfg input) u
+
+/-- A named phase witness for a configuration occurring in a complete composite run. -/
+private inductive CompositionCfgPhase
+    (tm₀ : MultiTapeTM k₀ Symbol State₀)
+    (tm₁ : MultiTapeTM k₁ Symbol State₁)
+    (input : List Symbol) (u v : ℕ)
+    (cfg : Cfg (compositionTapeCount k₀ k₁) Symbol
+      (CompositionState State₀ State₁) input) : Prop
+  | first (m : ℕ) (hm : m ≤ u)
+      (hcfg : cfg = compositionFirstCfg tm₀ tm₁
+        (tm₀.runFrom (tm₀.initCfg input) m))
+  | rewind (s : ℕ)
+      (hs : s ≤ ((firstFinalCfg tm₀ input u).output).length)
+      (hcfg : cfg = compositionIntermediateCfg tm₀ tm₁
+          (firstFinalCfg tm₀ input u)
+          .rewind
+          ((((firstFinalCfg tm₀ input u).output).length : ℤ) - 1 - s))
+  | initialClassify
+      (hcfg : cfg = compositionIntermediateCfg tm₀ tm₁
+          (firstFinalCfg tm₀ input u)
+          (.classify tm₁.q₀ .right) 0)
+  | second (m : ℕ) (hm : m ≤ v)
+      (hcfg : cfg = compositionSecondCfg tm₀ tm₁
+          (firstFinalCfg tm₀ input u)
+          (tm₁.runFrom
+            (tm₁.initCfg ((firstFinalCfg tm₀ input u).output)) m))
+  | secondClassify (m : ℕ) (hm : m < v) (boundary : CompositionBoundary)
+      (hcfg : cfg = compositionClassifyCfg tm₀ tm₁
+          (firstFinalCfg tm₀ input u)
+          (tm₁.runFrom
+            (tm₁.initCfg ((firstFinalCfg tm₀ input u).output)) (m + 1))
+          boundary)
+
+/--
+Every prefix of a complete composite run is in one of the configurations described by
+the first simulation, the rewind, the initial classifier, or an even or odd second-phase step.
+-/
+private lemma runFrom_composition_cases
+    (input : List Symbol) (u v r : ℕ)
+    (hhalt₀ :
+      (firstFinalCfg tm₀ input u).state = none)
+    (hactive₀ :
+      ∀ m < u, (tm₀.runFrom (tm₀.initCfg input) m).state ≠ none)
+    (hactive₁ :
+      ∀ m < v,
+        (tm₁.runFrom
+          (tm₁.initCfg ((firstFinalCfg tm₀ input u).output)) m).state ≠ none)
+    (hr :
+      r ≤ u + (((firstFinalCfg tm₀ input u).output).length + 3) + 2 * v) :
+    CompositionCfgPhase tm₀ tm₁ input u v
+      ((comp tm₀ tm₁).runFrom ((comp tm₀ tm₁).initCfg input) r) := by
+  by_cases hru : r ≤ u
+  · exact .first r hru
+      (runFrom_firstPhase tm₀ tm₁ input r
+        (fun m hm => hactive₀ m (lt_of_lt_of_le hm hru)))
+  · have hur : u < r := Nat.lt_of_not_ge hru
+    obtain ⟨d, hd⟩ := Nat.exists_eq_add_of_le (Nat.le_of_lt hur)
+    have hdpos : 0 < d := by omega
+    have hdle :
+        d ≤ ((firstFinalCfg tm₀ input u).output).length + 3 + 2 * v := by
+      omega
+    by_cases hrewind :
+        d ≤ ((firstFinalCfg tm₀ input u).output).length + 1
+    · have hcfg :
+          (comp tm₀ tm₁).runFrom ((comp tm₀ tm₁).initCfg input) r =
+            compositionIntermediateCfg tm₀ tm₁
+              (firstFinalCfg tm₀ input u)
+              .rewind
+              ((((firstFinalCfg tm₀ input u).output).length : ℤ) -
+                1 - ((d - 1 : ℕ) : ℤ)) := by
+        rw [hd, (comp tm₀ tm₁).runFrom_add
+          ((comp tm₀ tm₁).initCfg input) u d]
+        rw [runFrom_firstPhase tm₀ tm₁ input u hactive₀]
+        conv_lhs => rw [show d = d - 1 + 1 by omega]
+        exact runFrom_firstHalt_rewind tm₀ tm₁
+          (firstFinalCfg tm₀ input u) hhalt₀ (d - 1) (by omega)
+      exact .rewind (d - 1) (by omega) hcfg
+    · by_cases hclassify :
+          d = ((firstFinalCfg tm₀ input u).output).length + 2
+      · have hcfg :
+            (comp tm₀ tm₁).runFrom ((comp tm₀ tm₁).initCfg input) r =
+              compositionIntermediateCfg tm₀ tm₁
+                (firstFinalCfg tm₀ input u)
+                (.classify tm₁.q₀ .right) 0 := by
+          rw [hd, runFrom_add]
+          rw [runFrom_firstPhase tm₀ tm₁ input u hactive₀]
+          simpa [hclassify] using
+            runFrom_firstHalt_classify tm₀ tm₁
+              (firstFinalCfg tm₀ input u) hhalt₀
+        exact .initialClassify hcfg
+      · have hdsecond :
+            ((firstFinalCfg tm₀ input u).output).length + 3 ≤ d := by
+          omega
+        let e := d - (((firstFinalCfg tm₀ input u).output).length + 3)
+        have hde :
+            d = ((firstFinalCfg tm₀ input u).output).length + 3 + e := by
+          dsimp only [e]
+          omega
+        have he : e ≤ 2 * v := by omega
+        rcases Nat.even_or_odd' e with ⟨m, heven | hodd⟩
+        · have hmv : m ≤ v := by omega
+          have hcfg :
+              (comp tm₀ tm₁).runFrom ((comp tm₀ tm₁).initCfg input) r =
+                compositionSecondCfg tm₀ tm₁
+                  (firstFinalCfg tm₀ input u)
+                  (tm₁.runFrom
+                    (tm₁.initCfg
+                      ((firstFinalCfg tm₀ input u).output)) m) := by
+            rw [hd, hde, heven]
+            rw [show
+              u + (((firstFinalCfg tm₀ input u).output).length + 3 + 2 * m) =
+                (u + (((firstFinalCfg tm₀ input u).output).length + 3)) +
+                  2 * m by omega]
+            rw [(comp tm₀ tm₁).runFrom_add
+              ((comp tm₀ tm₁).initCfg input)
+              (u + (((firstFinalCfg tm₀ input u).output).length + 3))
+              (2 * m)]
+            rw [runFrom_to_secondInit tm₀ tm₁ input u hhalt₀ hactive₀]
+            exact runFrom_secondPhase tm₀ tm₁
+              (firstFinalCfg tm₀ input u)
+              (tm₁.initCfg ((firstFinalCfg tm₀ input u).output)) m
+              (fun j hj => hactive₁ j (lt_of_lt_of_le hj hmv))
+          exact .second m hmv hcfg
+        · have hmv : m < v := by omega
+          obtain ⟨boundary, hboundary⟩ :=
+            runFrom_secondPhase_odd tm₀ tm₁
+              (firstFinalCfg tm₀ input u)
+              (tm₁.initCfg ((firstFinalCfg tm₀ input u).output)) m
+              (fun j hj => hactive₁ j (lt_of_le_of_lt hj hmv))
+          have hcfg :
+              (comp tm₀ tm₁).runFrom ((comp tm₀ tm₁).initCfg input) r =
+                compositionClassifyCfg tm₀ tm₁
+                  (firstFinalCfg tm₀ input u)
+                  (tm₁.runFrom
+                    (tm₁.initCfg
+                      ((firstFinalCfg tm₀ input u).output)) (m + 1))
+                  boundary := by
+            rw [hd, hde, hodd]
+            rw [show
+              u + (((firstFinalCfg tm₀ input u).output).length + 3 +
+                  (2 * m + 1)) =
+                (u + (((firstFinalCfg tm₀ input u).output).length + 3)) +
+                  (2 * m + 1) by omega]
+            rw [(comp tm₀ tm₁).runFrom_add
+              ((comp tm₀ tm₁).initCfg input)
+              (u + (((firstFinalCfg tm₀ input u).output).length + 3))
+              (2 * m + 1)]
+            rw [runFrom_to_secondInit tm₀ tm₁ input u hhalt₀ hactive₀]
+            exact hboundary
+          exact .secondClassify m hmv boundary hcfg
+
+/-!
+## Resource bounds and function-level correctness
+-/
+
+namespace Composition
+
+/-- Time bound produced by sequentially composing computations with bounds `T₀` and `T₁`. -/
+def timeBound (T₀ T₁ : ℕ → ℕ) (n : ℕ) : ℕ :=
+  2 * T₀ n + 3 + 2 * T₁ (T₀ n)
+
+/-- Space bound produced by sequential composition, including its intermediate work tape. -/
+def spaceBound (T₀ S₀ S₁ : ℕ → ℕ) (n : ℕ) : ℕ :=
+  S₀ n + (T₀ n + 2) + S₁ (T₀ n)
+
+/-- Sequential composition preserves monotonicity of time bounds. -/
+lemma timeBound_mono {T₀ T₁ : ℕ → ℕ} (hT₀ : Monotone T₀) (hT₁ : Monotone T₁) :
+    Monotone (timeBound T₀ T₁) := by
+  intro m n hmn
+  have hT₀mn := hT₀ hmn
+  have hT₁mn := hT₁ hT₀mn
+  simp only [timeBound]
+  omega
+
+/-- Sequential composition preserves monotonicity of space bounds. -/
+lemma spaceBound_mono {T₀ S₀ S₁ : ℕ → ℕ}
+    (hT₀ : Monotone T₀) (hS₀ : Monotone S₀) (hS₁ : Monotone S₁) :
+    Monotone (spaceBound T₀ S₀ S₁) := by
+  intro m n hmn
+  have hT₀mn := hT₀ hmn
+  have hS₀mn := hS₀ hmn
+  have hS₁mn := hS₁ hT₀mn
+  simp only [spaceBound]
+  omega
+
+end Composition
+
+/-- Decompose composite space usage into the first, intermediate, and second tape blocks. -/
+private lemma compositionSpaceUsed_eq
+    {input : List Symbol}
+    (cfg : Cfg (compositionTapeCount k₀ k₁) Symbol
+      (CompositionState State₀ State₁) input)
+    (t : ℕ) :
+    (comp tm₀ tm₁).spaceUsed cfg t =
+      (∑ i : Fin k₀, (comp tm₀ tm₁).spaceUsedByTape cfg t
+        (compositionFirstTapeIdx k₁ i)) +
+      (comp tm₀ tm₁).spaceUsedByTape cfg t
+        (compositionIntermediateTapeIdx k₀ k₁) +
+      ∑ i : Fin k₁, (comp tm₀ tm₁).spaceUsedByTape cfg t
+        (compositionSecondTapeIdx k₀ k₁ i) := by
+  unfold spaceUsed
+  rw [Fin.sum_univ_add, Fin.sum_univ_castSucc]
+  congr 1
+
+/-- Every first-component tape position in a complete composite run occurs in the first run. -/
+private lemma exists_firstComponent_tapePos_eq
+    (input : List Symbol) (u v r : ℕ)
+    (hhalt₀ :
+      (tm₀.runFrom (tm₀.initCfg input) u).state = none)
+    (hactive₀ :
+      ∀ m < u, (tm₀.runFrom (tm₀.initCfg input) m).state ≠ none)
+    (hactive₁ :
+      ∀ m < v,
+        (tm₁.runFrom
+          (tm₁.initCfg ((tm₀.runFrom (tm₀.initCfg input) u).output)) m).state ≠ none)
+    (hr :
+      r ≤ u + (((tm₀.runFrom (tm₀.initCfg input) u).output).length + 3) + 2 * v)
+    (i : Fin k₀) :
+    ∃ m ≤ u,
+      ((comp tm₀ tm₁).runFrom
+        ((comp tm₀ tm₁).initCfg input) r).workTapePos
+          (compositionFirstTapeIdx k₁ i) =
+        (tm₀.runFrom (tm₀.initCfg input) m).workTapePos i := by
+  have hphase := runFrom_composition_cases tm₀ tm₁ input u v r
+    hhalt₀ hactive₀ hactive₁ hr
+  cases hphase with
+  | first m hm hcfg =>
+    refine ⟨m, hm, ?_⟩
+    rw [hcfg]
+    simp [compositionFirstCfg, compositionFirstTapeIdx]
+  | rewind _ _ hcfg =>
+    refine ⟨u, le_rfl, ?_⟩
+    rw [hcfg]
+    have hne : i.val ≠ k₀ := by omega
+    simp [compositionIntermediateCfg, compositionFirstCfg, compositionFirstTapeIdx, hne]
+  | initialClassify hcfg =>
+    refine ⟨u, le_rfl, ?_⟩
+    rw [hcfg]
+    have hne : i.val ≠ k₀ := by omega
+    simp [compositionIntermediateCfg, compositionFirstCfg, compositionFirstTapeIdx, hne]
+  | second _ _ hcfg =>
+    refine ⟨u, le_rfl, ?_⟩
+    rw [hcfg]
+    simp [compositionSecondCfg, compositionFirstTapeIdx]
+  | secondClassify _ _ _ hcfg =>
+    refine ⟨u, le_rfl, ?_⟩
+    rw [hcfg]
+    simp [compositionClassifyCfg, compositionSecondCfg, compositionFirstTapeIdx]
+
+/-- Every second-component tape position in a complete composite run occurs in the second run. -/
+private lemma exists_secondComponent_tapePos_eq
+    (input : List Symbol) (u v r : ℕ)
+    (hhalt₀ :
+      (tm₀.runFrom (tm₀.initCfg input) u).state = none)
+    (hactive₀ :
+      ∀ m < u, (tm₀.runFrom (tm₀.initCfg input) m).state ≠ none)
+    (hactive₁ :
+      ∀ m < v,
+        (tm₁.runFrom
+          (tm₁.initCfg ((tm₀.runFrom (tm₀.initCfg input) u).output)) m).state ≠ none)
+    (hr :
+      r ≤ u + (((tm₀.runFrom (tm₀.initCfg input) u).output).length + 3) + 2 * v)
+    (i : Fin k₁) :
+    ∃ m ≤ v,
+      ((comp tm₀ tm₁).runFrom
+        ((comp tm₀ tm₁).initCfg input) r).workTapePos
+          (compositionSecondTapeIdx k₀ k₁ i) =
+        (tm₁.runFrom
+          (tm₁.initCfg ((tm₀.runFrom (tm₀.initCfg input) u).output)) m).workTapePos i := by
+  have hphase := runFrom_composition_cases tm₀ tm₁ input u v r
+    hhalt₀ hactive₀ hactive₁ hr
+  cases hphase with
+  | first _ _ hcfg =>
+    refine ⟨0, Nat.zero_le _, ?_⟩
+    rw [hcfg]
+    have hlt : ¬k₀ + 1 + i.val < k₀ := by omega
+    have hne : k₀ + 1 + i.val ≠ k₀ := by omega
+    simp [compositionFirstCfg, compositionSecondTapeIdx, runFrom, hlt, hne]
+  | rewind _ _ hcfg =>
+    refine ⟨0, Nat.zero_le _, ?_⟩
+    rw [hcfg]
+    have hlt : ¬k₀ + 1 + i.val < k₀ := by omega
+    have hne : k₀ + 1 + i.val ≠ k₀ := by omega
+    simp [compositionIntermediateCfg, compositionFirstCfg, compositionSecondTapeIdx, runFrom,
+      hlt, hne]
+  | initialClassify hcfg =>
+    refine ⟨0, Nat.zero_le _, ?_⟩
+    rw [hcfg]
+    have hlt : ¬k₀ + 1 + i.val < k₀ := by omega
+    have hne : k₀ + 1 + i.val ≠ k₀ := by omega
+    simp [compositionIntermediateCfg, compositionFirstCfg, compositionSecondTapeIdx, runFrom,
+      hlt, hne]
+  | second m hm hcfg =>
+    refine ⟨m, hm, ?_⟩
+    rw [hcfg]
+    have hlt : ¬k₀ + 1 + i.val < k₀ := by omega
+    have hne : k₀ + 1 + i.val ≠ k₀ := by omega
+    simp [compositionSecondCfg, compositionSecondTapeIdx, hlt, hne]
+  | secondClassify m hm _ hcfg =>
+    refine ⟨m + 1, by omega, ?_⟩
+    rw [hcfg]
+    have hlt : ¬k₀ + 1 + i.val < k₀ := by omega
+    have hne : k₀ + 1 + i.val ≠ k₀ := by omega
+    simp [compositionClassifyCfg, compositionSecondCfg, compositionSecondTapeIdx, hlt, hne]
+
+/-- Throughout a complete composite run, the intermediate head stays between cells `-1` and `u`,
+where `u` is the first component's halting time. -/
+private lemma compositionIntermediateTapePos_mem_Icc
+    (input : List Symbol) (u v r : ℕ)
+    (hhalt₀ :
+      (tm₀.runFrom (tm₀.initCfg input) u).state = none)
+    (hactive₀ :
+      ∀ m < u, (tm₀.runFrom (tm₀.initCfg input) m).state ≠ none)
+    (hactive₁ :
+      ∀ m < v,
+        (tm₁.runFrom
+          (tm₁.initCfg ((tm₀.runFrom (tm₀.initCfg input) u).output)) m).state ≠ none)
+    (hr :
+      r ≤ u + (((tm₀.runFrom (tm₀.initCfg input) u).output).length + 3) + 2 * v) :
+    ((comp tm₀ tm₁).runFrom
+      ((comp tm₀ tm₁).initCfg input) r).workTapePos
+        (compositionIntermediateTapeIdx k₀ k₁) ∈
+      Finset.Icc (-1) (u : ℤ) := by
+  have houtput :
+      ((tm₀.runFrom (tm₀.initCfg input) u).output).length ≤ u :=
+    by simpa using tm₀.runFrom_output_length_le (tm₀.initCfg input) u
+  have hphase := runFrom_composition_cases tm₀ tm₁ input u v r
+    hhalt₀ hactive₀ hactive₁ hr
+  cases hphase with
+  | first m hm hcfg =>
+    have hmoutput :
+        ((tm₀.runFrom (tm₀.initCfg input) m).output).length ≤ m :=
+      by simpa using tm₀.runFrom_output_length_le (tm₀.initCfg input) m
+    rw [hcfg]
+    simp only [compositionFirstCfg, compositionIntermediateTapeIdx_val,
+      lt_self_iff_false, ↓reduceDIte, ↓reduceIte, Finset.mem_Icc]
+    constructor <;> omega
+  | rewind s hs hcfg =>
+    rw [hcfg]
+    simp only [firstFinalCfg, compositionIntermediateCfg, compositionIntermediateTapeIdx_val,
+      ↓reduceIte, Finset.mem_Icc] at hs ⊢
+    constructor <;> omega
+  | initialClassify hcfg =>
+    rw [hcfg]
+    simp [compositionIntermediateCfg]
+  | second m _ hcfg =>
+    have hp :=
+      (tm₁.runFrom
+        (tm₁.initCfg ((tm₀.runFrom (tm₀.initCfg input) u).output)) m).inputPos.isLt
+    rw [hcfg]
+    simp only [firstFinalCfg, compositionSecondCfg, compositionIntermediateTapeIdx_val,
+      lt_self_iff_false, ↓reduceDIte, Finset.mem_Icc]
+    unfold compositionVirtualInputPos
+    constructor <;> omega
+  | secondClassify m _ _ hcfg =>
+    have hp :=
+      (tm₁.runFrom
+        (tm₁.initCfg ((tm₀.runFrom (tm₀.initCfg input) u).output)) (m + 1)).inputPos.isLt
+    rw [hcfg]
+    simp only [firstFinalCfg, compositionClassifyCfg, compositionSecondCfg,
+      compositionIntermediateTapeIdx_val, lt_self_iff_false, ↓reduceDIte,
+      Finset.mem_Icc]
+    unfold compositionVirtualInputPos
+    constructor <;> omega
+
+/-- The intermediate work tape visits at most `u + 2` cells in a complete composite run. -/
+private lemma compositionIntermediateSpace_le
+    (input : List Symbol) (u v : ℕ)
+    (hhalt₀ :
+      (tm₀.runFrom (tm₀.initCfg input) u).state = none)
+    (hactive₀ :
+      ∀ m < u, (tm₀.runFrom (tm₀.initCfg input) m).state ≠ none)
+    (hactive₁ :
+      ∀ m < v,
+        (tm₁.runFrom
+          (tm₁.initCfg ((tm₀.runFrom (tm₀.initCfg input) u).output)) m).state ≠ none) :
+    (comp tm₀ tm₁).spaceUsedByTape
+        ((comp tm₀ tm₁).initCfg input)
+        (u + (((tm₀.runFrom (tm₀.initCfg input) u).output).length + 3) + 2 * v)
+        (compositionIntermediateTapeIdx k₀ k₁) ≤
+      u + 2 := by
+  unfold spaceUsedByTape
+  have hsub :
+      (comp tm₀ tm₁).visitedByTapeHead
+        ((comp tm₀ tm₁).initCfg input)
+        (u + (((tm₀.runFrom (tm₀.initCfg input) u).output).length + 3) + 2 * v)
+        (compositionIntermediateTapeIdx k₀ k₁) ⊆
+      Finset.Icc (-1) (u : ℤ) := by
+    intro p hp
+    simp only [visitedByTapeHead, Finset.mem_image, Finset.mem_range] at hp
+    obtain ⟨r, hr, rfl⟩ := hp
+    exact compositionIntermediateTapePos_mem_Icc tm₀ tm₁ input u v r
+      hhalt₀ hactive₀ hactive₁ (by omega)
+  calc ((comp tm₀ tm₁).visitedByTapeHead
+        ((comp tm₀ tm₁).initCfg input)
+        (u + (((tm₀.runFrom (tm₀.initCfg input) u).output).length + 3) + 2 * v)
+        (compositionIntermediateTapeIdx k₀ k₁)).card
+      ≤ (Finset.Icc (-1) (u : ℤ)).card := Finset.card_le_card hsub
+    _ = u + 2 := by
+        rw [Int.card_Icc]
+        omega
+
+/--
+Function composition for deterministic multi-tape Turing machines.
+
+The composite runs the first machine, rewinds its output in linear time, and simulates each step
+of the second machine in two steps. Its first and second work-tape blocks use the respective
+component space bounds, while the intermediate tape visits at most `T₀ n + 2` cells.
+
+The monotonicity hypotheses on `T₁` and `S₁` allow the second component's bounds to be evaluated
+at the first component's time bound, which also bounds the intermediate output length.
+-/
+theorem comp_computesFunInTimeAndSpace
+    {IOSymbol : Type*}
+    {f g : List IOSymbol → List IOSymbol}
+    (embedding : IOSymbol ↪ Symbol)
+    {T₀ S₀ T₁ S₁ : ℕ → ℕ}
+    (h₀ : ComputesFunInTimeAndSpace tm₀ f embedding T₀ S₀)
+    (h₁ : ComputesFunInTimeAndSpace tm₁ g embedding T₁ S₁)
+    (hT₁ : Monotone T₁)
+    (hS₁ : Monotone S₁) :
+    ComputesFunInTimeAndSpace
+      (comp tm₀ tm₁) (g ∘ f) embedding
+      (Composition.timeBound T₀ T₁)
+      (Composition.spaceBound T₀ S₀ S₁) := by
+  intro input
+  obtain ⟨t₀, ht₀, s₀, hs₀, hhalt₀', hout₀, hspace₀⟩ := h₀ input
+  obtain ⟨u, hut₀, hhaltu, hactiveu⟩ :=
+    exists_minimal_halting_time tm₀ (tm₀.initCfg (input.map embedding)) t₀ hhalt₀'
+  have hfirstOutput :
+      (tm₀.runFrom (tm₀.initCfg (input.map embedding)) u).output =
+        (f input).map embedding := by
+    rw [← hout₀]
+    exact (tm₀.runFrom_output_eq_of_halt _ hut₀ hhaltu).symm
+  have hfirstOutputLength :
+      ((tm₀.runFrom (tm₀.initCfg (input.map embedding)) u).output).length =
+        (f input).length := by
+    rw [hfirstOutput, List.length_map]
+  have hfirstOutputLength_le_u : (f input).length ≤ u := by
+    rw [← hfirstOutputLength]
+    simpa using tm₀.runFrom_output_length_le (tm₀.initCfg (input.map embedding)) u
+  have hu_le_T₀ : u ≤ T₀ input.length := le_trans hut₀ ht₀
+  have hfirstOutputLength_le_T₀ : (f input).length ≤ T₀ input.length :=
+    le_trans hfirstOutputLength_le_u hu_le_T₀
+  obtain ⟨t₁, ht₁, s₁, hs₁, hhalt₁', hout₁, hspace₁⟩ := h₁ (f input)
+  obtain ⟨v, hvt₁, hhaltv, hactivev⟩ :=
+    exists_minimal_halting_time tm₁
+      (tm₁.initCfg ((f input).map embedding)) t₁ hhalt₁'
+  have hsecondOutput :
+      (tm₁.runFrom (tm₁.initCfg ((f input).map embedding)) v).output =
+        (g (f input)).map embedding := by
+    rw [← hout₁]
+    exact (tm₁.runFrom_output_eq_of_halt _ hvt₁ hhaltv).symm
+  have hv_le_T₁ : v ≤ T₁ (f input).length := le_trans hvt₁ ht₁
+  have hv_le_bound : v ≤ T₁ (T₀ input.length) :=
+    le_trans hv_le_T₁ (hT₁ hfirstOutputLength_le_T₀)
+  have hactivev_firstOutput :
+      ∀ m < v,
+        (tm₁.runFrom
+          (tm₁.initCfg
+            ((tm₀.runFrom (tm₀.initCfg (input.map embedding)) u).output)) m).state ≠ none := by
+    rw [hfirstOutput]
+    exact hactivev
+  have hhaltv_firstOutput :
+      (tm₁.runFrom
+        (tm₁.initCfg
+          ((tm₀.runFrom (tm₀.initCfg (input.map embedding)) u).output)) v).state = none := by
+    rw [hfirstOutput]
+    exact hhaltv
+  let totalTime := u + ((f input).length + 3) + 2 * v
+  have htotalTime_le :
+      totalTime ≤ Composition.timeBound T₀ T₁ input.length := by
+    dsimp only [totalTime, Composition.timeBound]
+    omega
+  have htotalTime_eq :
+      totalTime =
+        u +
+          (((tm₀.runFrom (tm₀.initCfg (input.map embedding)) u).output).length + 3) +
+          2 * v := by
+    dsimp only [totalTime]
+    rw [hfirstOutputLength]
+  have hcomp :=
+    comp_haltsWithOutput tm₀ tm₁ (input := input.map embedding)
+      hhaltu hactiveu rfl hhaltv_firstOutput hactivev_firstOutput rfl
+  have hfinalState :
+      ((comp tm₀ tm₁).runFrom
+        ((comp tm₀ tm₁).initCfg (input.map embedding)) totalTime).state = none := by
+    rw [htotalTime_eq]
+    exact hcomp.1
+  have hfinalOutput :
+      ((comp tm₀ tm₁).runFrom
+          ((comp tm₀ tm₁).initCfg (input.map embedding)) totalTime).output =
+        (g (f input)).map embedding := by
+    rw [htotalTime_eq, hcomp.2, hfirstOutput]
+    exact hsecondOutput
+  have hfirstSpace :
+      (∑ i : Fin k₀, (comp tm₀ tm₁).spaceUsedByTape
+        ((comp tm₀ tm₁).initCfg (input.map embedding)) totalTime
+        (compositionFirstTapeIdx k₁ i)) ≤
+      tm₀.spaceUsed (tm₀.initCfg (input.map embedding)) u := by
+    unfold spaceUsed
+    apply Finset.sum_le_sum
+    intro i _
+    apply spaceUsedByTape_le_of_positions
+      (comp tm₀ tm₁) tm₀
+      ((comp tm₀ tm₁).initCfg (input.map embedding))
+      (tm₀.initCfg (input.map embedding))
+      totalTime u (compositionFirstTapeIdx k₁ i) i
+    intro r hr
+    exact exists_firstComponent_tapePos_eq tm₀ tm₁ (input.map embedding) u v r
+      hhaltu hactiveu hactivev_firstOutput
+      (by rw [← htotalTime_eq]; exact hr) i
+  have hmiddleSpace :
+      (comp tm₀ tm₁).spaceUsedByTape
+        ((comp tm₀ tm₁).initCfg (input.map embedding)) totalTime
+        (compositionIntermediateTapeIdx k₀ k₁) ≤ u + 2 := by
+    rw [htotalTime_eq]
+    exact compositionIntermediateSpace_le tm₀ tm₁ (input.map embedding) u v
+      hhaltu hactiveu hactivev_firstOutput
+  have hsecondTapeBlock :
+      (∑ i : Fin k₁, (comp tm₀ tm₁).spaceUsedByTape
+        ((comp tm₀ tm₁).initCfg (input.map embedding)) totalTime
+        (compositionSecondTapeIdx k₀ k₁ i)) ≤
+      tm₁.spaceUsed
+        (tm₁.initCfg
+          ((tm₀.runFrom (tm₀.initCfg (input.map embedding)) u).output)) v := by
+    unfold spaceUsed
+    apply Finset.sum_le_sum
+    intro i _
+    apply spaceUsedByTape_le_of_positions
+      (comp tm₀ tm₁) tm₁
+      ((comp tm₀ tm₁).initCfg (input.map embedding))
+      (tm₁.initCfg
+        ((tm₀.runFrom (tm₀.initCfg (input.map embedding)) u).output))
+      totalTime v (compositionSecondTapeIdx k₀ k₁ i) i
+    intro r hr
+    exact exists_secondComponent_tapePos_eq tm₀ tm₁ (input.map embedding) u v r
+      hhaltu hactiveu hactivev_firstOutput
+      (by rw [← htotalTime_eq]; exact hr) i
+  have hspace₀_le :
+      tm₀.spaceUsed (tm₀.initCfg (input.map embedding)) u ≤ S₀ input.length := by
+    calc
+      tm₀.spaceUsed (tm₀.initCfg (input.map embedding)) u
+          ≤ tm₀.spaceUsed (tm₀.initCfg (input.map embedding)) t₀ :=
+            spaceUsed_mono tm₀ _ hut₀
+      _ = s₀ := hspace₀
+      _ ≤ S₀ input.length := hs₀
+  have hspace₁_le :
+      tm₁.spaceUsed (tm₁.initCfg ((f input).map embedding)) v ≤
+        S₁ (T₀ input.length) := by
+    calc
+      tm₁.spaceUsed (tm₁.initCfg ((f input).map embedding)) v
+          ≤ tm₁.spaceUsed (tm₁.initCfg ((f input).map embedding)) t₁ :=
+            spaceUsed_mono tm₁ _ hvt₁
+      _ = s₁ := hspace₁
+      _ ≤ S₁ (f input).length := hs₁
+      _ ≤ S₁ (T₀ input.length) := hS₁ hfirstOutputLength_le_T₀
+  have hcompositeSpace_le :
+      (comp tm₀ tm₁).spaceUsed
+          ((comp tm₀ tm₁).initCfg (input.map embedding)) totalTime ≤
+        Composition.spaceBound T₀ S₀ S₁ input.length := by
+    unfold Composition.spaceBound
+    rw [compositionSpaceUsed_eq]
+    have hsecondTapeBlock_le :
+        (∑ i : Fin k₁, (comp tm₀ tm₁).spaceUsedByTape
+          ((comp tm₀ tm₁).initCfg (input.map embedding)) totalTime
+          (compositionSecondTapeIdx k₀ k₁ i)) ≤
+        tm₁.spaceUsed (tm₁.initCfg ((f input).map embedding)) v := by
+      rw [← hfirstOutput]
+      exact hsecondTapeBlock
+    omega
+  refine ⟨totalTime, htotalTime_le,
+    (comp tm₀ tm₁).spaceUsed
+      ((comp tm₀ tm₁).initCfg (input.map embedding)) totalTime,
+    hcompositeSpace_le, hfinalState, ?_, rfl⟩
+  simpa only [Function.comp_apply] using hfinalOutput
+
 
 end Correctness
 
