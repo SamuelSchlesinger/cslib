@@ -7,6 +7,7 @@ module
 
 public import Cslib.Computability.Circuit.Boolean.Basic
 public import Cslib.Computability.Circuit.Synthesis
+public import Mathlib.Algebra.BigOperators.Group.Finset.Basic
 public import Mathlib.Data.Fintype.Card
 
 /-!
@@ -48,6 +49,37 @@ theorem and (hf : Synthesis interpretation s {f} a) (hg : Synthesis interpretati
 theorem or (hf : Synthesis interpretation s {f} a) (hg : Synthesis interpretation s {g} b) :
     Synthesis interpretation s {fun x => f x || g x} (a + b + 1) := by
   simpa [interpretation] using hf.binary hg .or
+
+/-- XOR costs four gates when its two arguments are already available. The intermediate
+conjunction and disjunction are shared. -/
+theorem xor_of_mem (hf : f ∈ s) (hg : g ∈ s) :
+    Synthesis interpretation s {fun x => Bool.xor (f x) (g x)} 4 := by
+  let both : BooleanFunction n := fun x => f x && g x
+  let either : BooleanFunction n := fun x => f x || g x
+  let notBoth : BooleanFunction n := fun x => !(both x)
+  have hboth : Synthesis interpretation s {both} 1 := by
+    simpa [both] using (of_mem hf).and (of_mem hg)
+  have heither : Synthesis interpretation s {either} 1 := by
+    simpa [either] using (of_mem hf).or (of_mem hg)
+  have hnot : Synthesis interpretation (s ∪ ({both} ∪ {either})) {notBoth} 1 := by
+    have hbmem : both ∈ s ∪ ({both} ∪ {either}) := by simp
+    simpa [notBoth] using (of_mem hbmem).not
+  have hfinal : Synthesis interpretation
+      (s ∪ (({both} ∪ {either}) ∪ {notBoth}))
+      {fun x => either x && notBoth x} 1 := by
+    have hemem : either ∈ s ∪ (({both} ∪ {either}) ∪ {notBoth}) := by simp
+    have hnmem : notBoth ∈ s ∪ (({both} ∪ {either}) ∪ {notBoth}) := by simp
+    exact (of_mem hemem).and (of_mem hnmem)
+  have h := ((hboth.union heither).comp hnot).trans hfinal
+  simpa only [Nat.add_assoc] using
+    h.mono Set.Subset.rfl (by
+      intro q hq
+      rcases Set.mem_singleton_iff.mp hq with rfl
+      simp only [Set.mem_singleton_iff]
+      funext x
+      cases hf' : f x <;> cases hg' : g x <;>
+        simp [both, either, notBoth, hf', hg'])
+      (by omega : (1 + 1 + 1 + 1) ≤ 4)
 
 /-- Disjoin a finite family of functions. The extra gate supplies the empty disjunction. -/
 theorem exists_mem (indices : Finset ι) (f : ι → BooleanFunction n) (cost : ι → ℕ)

@@ -6,7 +6,7 @@ Authors: Samuel Schlesinger
 module
 
 public import Cslib.Computability.Circuit.Basic
-public import Cslib.Foundations.Data.BitString
+public import Cslib.Foundations.Data.BitString -- shake: keep
 public import Mathlib.Data.Fintype.Card
 public import Mathlib.Data.Fintype.Sum
 public import Mathlib.Tactic.DeriveFintype
@@ -18,6 +18,8 @@ The De Morgan basis consists of binary AND and OR, unary NOT, and Boolean consta
 Every gate has fan-in at most two, so these are the usual bounded fan-in Boolean circuits
 (`Program.fanInAtMost_two`). Circuit size counts every gate, including constants;
 designated output wires are free.
+
+This module re-exports the shared `BooleanFunction` and `BitString` vocabulary.
 -/
 
 @[expose] public section

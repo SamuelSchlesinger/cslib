@@ -375,6 +375,29 @@ def Program.lines {gateCount : Nat} :
       (program.lines gate).mapWires Wire.Renaming.castSucc := by
   simp [Program.lines]
 
+/-- Every argument of a widened line is an input or an earlier gate. -/
+theorem Program.lines_wires_lt {n g : ℕ} (p : Program σ n g) (gate : Fin g)
+    (argument : Fin (σ.Arity (p.lines gate).op)) :
+    ((p.lines gate).wires argument).val < n + gate.val := by
+  induction p with
+  | empty => exact gate.elim0
+  | @gate g p line ih =>
+      induction gate using Fin.lastCases with
+      | last =>
+          revert argument
+          rw [Program.lines_gate_last]
+          intro argument
+          change (Wire.Renaming.castSucc (line.wires argument)).val < n + g
+          rw [Wire.Renaming.castSucc_apply]
+          exact (line.wires argument).isLt
+      | cast gate =>
+          revert argument
+          rw [Program.lines_gate_castSucc]
+          intro argument
+          change (Wire.Renaming.castSucc ((p.lines gate).wires argument)).val < n + gate.val
+          rw [Wire.Renaming.castSucc_apply]
+          exact ih gate argument
+
 /-- A widened line evaluates to the value of its corresponding program gate. -/
 theorem Program.lines_eval
     (program : Program σ inputCount gateCount)
