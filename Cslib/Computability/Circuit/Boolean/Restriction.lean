@@ -19,6 +19,10 @@ constant, an existing wire, or a new gate. This module records that choice and
 proves the local simplifier correct. Circuit size counts every operation. Constants
 stay symbolic during partial evaluation, and a nonconstant output needs no extra
 gate to materialize them.
+
+`restrictProgram` constructs a certified restriction. The deletion lemmas identify
+omitted gates, and `exists_restricted_circuit` turns the restriction into a circuit
+with an exact size bound.
 -/
 
 @[expose] public section
@@ -149,7 +153,7 @@ structure ProgramRestriction (source : Program signature (n + 1) g)
 namespace ProgramRestriction
 
 /-- Restricting an empty program only changes the input map. -/
-def empty (selected : Fin (n + 1)) (fixed : Bool) :
+private def empty (selected : Fin (n + 1)) (fixed : Bool) :
     ProgramRestriction (Program.empty : Program signature (n + 1) 0) selected fixed where
   gateCount := 0
   result := .empty
@@ -172,7 +176,7 @@ def empty (selected : Fin (n + 1)) (fixed : Bool) :
   count_eq := rfl
 
 /-- A source gate that simplifies to an existing residual value is deleted. -/
-def reuseLast {source : Program signature (n + 1) g}
+private def reuseLast {source : Program signature (n + 1) g}
     {selected : Fin (n + 1)} {fixed : Bool}
     (prior : ProgramRestriction source selected fixed)
     (line : Line signature (n + 1) g)
@@ -201,7 +205,7 @@ def reuseLast {source : Program signature (n + 1) g}
     omega
 
 /-- A source gate that remains nontrivial is appended to the residual program. -/
-def keepLast {source : Program signature (n + 1) g}
+private def keepLast {source : Program signature (n + 1) g}
     {selected : Fin (n + 1)} {fixed : Bool}
     (prior : ProgramRestriction source selected fixed)
     (line : Line signature (n + 1) g)
@@ -230,7 +234,7 @@ def keepLast {source : Program signature (n + 1) g}
 
 /-- Apply one local simplification, also reusing any semantically equivalent
 constant or existing wire. -/
-noncomputable def step {source : Program signature (n + 1) g}
+private noncomputable def step {source : Program signature (n + 1) g}
     {selected : Fin (n + 1)} {fixed : Bool}
     (prior : ProgramRestriction source selected fixed)
     (line : Line signature (n + 1) g)
@@ -255,7 +259,7 @@ noncomputable def step {source : Program signature (n + 1) g}
       · exact prior.keepLast line mappedLine hline
 
 /-- Later simplification preserves every previously deleted gate. -/
-theorem step_deleted_castSucc {source : Program signature (n + 1) g}
+private theorem step_deleted_castSucc {source : Program signature (n + 1) g}
     {selected : Fin (n + 1)} {fixed : Bool}
     (prior : ProgramRestriction source selected fixed)
     (line : Line signature (n + 1) g)
@@ -274,7 +278,7 @@ theorem step_deleted_castSucc {source : Program signature (n + 1) g}
       split <;> simp [reuseLast, keepLast, hdeleted]
 
 /-- A gate equal to an existing residual value is omitted. -/
-theorem step_eq_deleted {source : Program signature (n + 1) g}
+private theorem step_eq_deleted {source : Program signature (n + 1) g}
     {selected : Fin (n + 1)} {fixed : Bool}
     (prior : ProgramRestriction source selected fixed)
     (line : Line signature (n + 1) g)
@@ -299,7 +303,7 @@ theorem step_eq_deleted {source : Program signature (n + 1) g}
 
 /-- A gate whose restricted output is constant is deleted, even when that
 constant is discovered through several earlier simplifications. -/
-theorem step_constant_deleted {source : Program signature (n + 1) g}
+private theorem step_constant_deleted {source : Program signature (n + 1) g}
     {selected : Fin (n + 1)} {fixed : Bool}
     (prior : ProgramRestriction source selected fixed)
     (line : Line signature (n + 1) g)
@@ -317,7 +321,7 @@ theorem step_constant_deleted {source : Program signature (n + 1) g}
     (fun input => (hconstant input).symm)
 
 /-- Simplifying a line on residual values preserves its restricted semantics. -/
-theorem simplify_line_eval {source : Program signature (n + 1) g}
+private theorem simplify_line_eval {source : Program signature (n + 1) g}
     {selected : Fin (n + 1)} {fixed : Bool}
     (prior : ProgramRestriction source selected fixed)
     (line : Line signature (n + 1) g) (input : Fin n → Bool) :
@@ -336,7 +340,7 @@ end ProgramRestriction
 /-- Partially evaluate every gate in program order after fixing one input.
 When a gate is semantically constant or duplicates an existing wire, it is
 reused instead of being retained. -/
-noncomputable def restrictProgram (selected : Fin (n + 1)) (fixed : Bool) :
+@[no_expose] noncomputable def restrictProgram (selected : Fin (n + 1)) (fixed : Bool) :
     (source : Program signature (n + 1) g) →
       ProgramRestriction source selected fixed
   | .empty => ProgramRestriction.empty selected fixed
@@ -346,7 +350,7 @@ noncomputable def restrictProgram (selected : Fin (n + 1)) (fixed : Bool) :
         (prior.simplify_line_eval line)
 
 /-- A gate whose output becomes constant after restriction is deleted. -/
-theorem restrictProgram_deletes_constant_last {source : Program signature (n + 1) g}
+private theorem restrictProgram_deletes_constant_last {source : Program signature (n + 1) g}
     (line : Line signature (n + 1) g)
     (selected : Fin (n + 1)) (fixed value : Bool)
     (hconstant : ∀ input : Fin n → Bool,
@@ -357,7 +361,7 @@ theorem restrictProgram_deletes_constant_last {source : Program signature (n + 1
   exact prior.step_constant_deleted line _ (prior.simplify_line_eval line) value hconstant
 
 /-- A source gate deleted in a prefix stays deleted when another gate is processed. -/
-theorem restrictProgram_deleted_castSucc {source : Program signature (n + 1) g}
+private theorem restrictProgram_deleted_castSucc {source : Program signature (n + 1) g}
     (line : Line signature (n + 1) g)
     (selected : Fin (n + 1)) (fixed : Bool)
     (gate : Fin g)
@@ -400,7 +404,7 @@ theorem exists_restricted_circuit (c : Circuit signature (n + 1) 1)
       exact htrace
 
 /-- A gate duplicating an earlier wire after restriction is omitted. -/
-theorem restrictProgram_deletes_equal_last {source : Program signature (n + 1) g}
+private theorem restrictProgram_deletes_equal_last {source : Program signature (n + 1) g}
     (line : Line signature (n + 1) g)
     (selected : Fin (n + 1)) (fixed : Bool) (wire : Wire (n + 1) g)
     (heq : ∀ input : Fin n → Bool,

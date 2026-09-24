@@ -727,6 +727,36 @@ private theorem binary_view (gate : Fin c.size) (wire : Wire (n + 1) c.size) (po
     simpa [Line.eval, Program.trace, Function.comp_def] using
       hbinary (c.program.trace interpretation input)
 
+omit h in
+/-- A binary gate reading two distinct inputs has no gate arguments and evaluates
+directly on those inputs. -/
+private theorem binary_inputs (gate : Fin c.size) (x y : Fin (n + 1)) (hxy : x ≠ y)
+    (polarity : Bool) (hx : c.program.Reads gate (Wire.input x))
+    (hy : c.program.Reads gate (Wire.input y))
+    (hop : (c.program.lines gate).op = (if polarity then .or else .and)) :
+    (∀ j, ¬ c.program.Reads gate (Wire.gate j)) ∧
+      (∀ input, c.program.eval interpretation input gate =
+        binary polarity (input x) (input y)) := by
+  obtain ⟨other, hreads, heval⟩ := binary_view gate (Wire.input x) polarity hx hop
+  have hother : other = Wire.input y := by
+    rcases (hreads _).mp hy with hh | hh
+    · have heq : y = x := by simpa [Wire.input] using hh
+      exact (hxy heq.symm).elim
+    · exact hh.symm
+  have hdisjoint (i : Fin (n + 1)) (j : Fin c.size) :
+      (Wire.gate j : Wire (n + 1) c.size) ≠ Wire.input i := by
+    intro heq
+    have := congrArg Fin.val heq
+    simp only [Wire.gate, Wire.input, Fin.val_natAdd, Fin.val_castAdd] at this
+    omega
+  refine ⟨?_, ?_⟩
+  · intro j hread
+    rcases (hreads _).mp hread with hh | hh
+    · exact hdisjoint x j hh
+    · exact hdisjoint y j (hh.trans hother)
+  · intro input
+    simpa only [hother, Program.trace_input] using heval input
+
 private theorem binary_other_ne (gate : Fin c.size) (wire other : Wire (n + 1) c.size)
     (polarity : Bool) (hread : c.program.Reads gate wire)
     (heval : ∀ input, c.program.eval interpretation input gate = binary polarity
@@ -959,41 +989,23 @@ private theorem not_shared_roots (hn : 0 < n)
     (x y : Fin (n + 1)) (hxy : x ≠ y) (a b : Fin c.size) (polarity : Bool)
     (hopa : (c.program.lines a).op = (if polarity then .or else .and))
     (hopb : (c.program.lines b).op = (if !polarity then .or else .and))
-    (hroota : ∀ w, c.program.Reads a w ↔ w = Wire.input x ∨ w = Wire.input y)
     (hx : ∀ j, c.program.Reads j (Wire.input x) ↔ j = a ∨ j = b)
     (hy : ∀ j, c.program.Reads j (Wire.input y) ↔ j = a ∨ j = b) : False := by
+  -- The shared AND/OR pair reads only the two inputs.
   have hax := (hx a).mpr (Or.inl rfl)
+  have hay := (hy a).mpr (Or.inl rfl)
   have hbx := (hx b).mpr (Or.inr rfl)
   have hby := (hy b).mpr (Or.inr rfl)
   have hab : a ≠ b := by intro heq; subst b; cases polarity <;> simp_all
-  have hdisjoint (i : Fin (n + 1)) (j : Fin c.size) :
-      (Wire.gate j : Wire (n + 1) c.size) ≠ Wire.input i := by
-    intro heq
-    have := congrArg Fin.val heq
-    simp only [Wire.gate, Wire.input, Fin.val_natAdd, Fin.val_castAdd] at this
-    omega
-  have hroota' (j : Fin c.size) : ¬ c.program.Reads a (Wire.gate j) := by
-    intro hread
-    rcases (hroota _).mp hread with hh | hh
-    · exact hdisjoint x j hh
-    · exact hdisjoint y j hh
-  obtain ⟨otherb, hreadsb, hevalb⟩ := binary_view b (Wire.input x) (!polarity) hbx hopb
-  have hotherb : otherb = Wire.input y := by
-    rcases (hreadsb _).mp hby with hh | hh
-    · have heq : y = x := by simpa [Wire.input] using hh
-      exact (hxy heq.symm).elim
-    · exact hh.symm
-  have hrootb' (j : Fin c.size) : ¬ c.program.Reads b (Wire.gate j) := by
-    intro hread
-    rcases (hreadsb _).mp hread with hh | hh
-    · exact hdisjoint x j hh
-    · exact hdisjoint y j (hh.trans hotherb)
+  obtain ⟨hroota, _⟩ := binary_inputs a x y hxy polarity hax hay hopa
+  obtain ⟨hrootb, hevalb⟩ := binary_inputs b x y hxy (!polarity) hbx hby hopb
+  -- Their successors have opposite operations, hence are distinct.
   obtain ⟨d, had⟩ := h.gate_has_consumer a (h.output_ne_consumer hn x a hax)
   obtain ⟨e, hbe⟩ := h.gate_has_consumer b (h.output_ne_consumer hn x b hbx)
-  have hopd := h.opposite_successor hn hnofour x polarity a b d hab hax hbx hrootb' hopa had
+  have hopd := h.opposite_successor hn hnofour x polarity a b d hab hax hbx hrootb hopa had
   have hope : (c.program.lines e).op = (if polarity then .or else .and) := by
     simpa using h.opposite_successor hn hnofour x (!polarity) b a e hab.symm
-      hbx hax hroota' hopb hbe
+      hbx hax hroota hopb hbe
   have hde : d ≠ e := by intro heq; subst d; cases polarity <;> simp_all
   have hunique (j : Fin c.size) (hj : c.program.Reads j (Wire.gate b)) : j = e :=
     h.unique_successor hnofour x (!polarity) b a j e hab.symm hbx hax hopb hj hbe
@@ -1011,17 +1023,19 @@ private theorem not_shared_roots (hn : 0 < n)
     have hread := (hreads other).mpr (Or.inr rfl)
     rw [heq] at hread
     exact hney hread
+  -- Fixing x makes gate a constant, while gate b copies the remaining input y.
   obtain ⟨remaining, hremaining⟩ := Fin.exists_succAbove_eq hxy.symm
   have hva := binary_constant_input x polarity a hax hopa
   have hvb (input : Fin n → Bool) :
       c.program.eval interpretation (Fin.insertNth x polarity input) b = input remaining := by
-    rw [hevalb, hotherb, Program.trace_input, Program.trace_input]
+    rw [hevalb]
     cases polarity <;> simp [binary, ← hremaining]
   have hgate (input : Fin n → Bool) :
       c.program.eval interpretation (Fin.insertNth x polarity input) e =
         binary polarity (input remaining)
           (c.program.trace interpretation (Fin.insertNth x polarity input) other) := by
     rw [heval, Program.trace_gateWire, Program.gateFunction, hvb]
+  -- Sensitivity across the boundary {y, b} forces e to copy y.
   have hcopy := h.restricted_bottleneck x polarity remaining {Wire.input y, Wire.gate b}
     (by simp [hremaining]) e other polarity hgate
     (by simpa only [Set.mem_insert_iff, Set.mem_singleton_iff, not_or] using
@@ -1040,6 +1054,7 @@ private theorem not_shared_roots (hn : 0 < n)
         · rw [hva, hva]
         · exact (hjb (by simp)).elim
       · exact (hje (hunique j ⟨argument, hwire⟩)).elim)
+  -- The shared pair and both successors are four distinct deleted gates.
   have hda := restrictProgram_deletes_constant c.program x polarity polarity a hva
   have hdb := restrictProgram_deletes_consumer c.program x polarity b _ hbx polarity (by simp)
   have hdd := restrictProgram_deletes_consumer c.program x polarity d _ had polarity
@@ -1071,7 +1086,7 @@ private theorem four_deleted (hn : 0 < n) :
     ((hroota _).mpr (Or.inr rfl)) hopa
   by_cases hbd : b = d
   · subst d
-    exact h.not_shared_roots hn hnofour x y hxy a b polarity hopa hopb hroota hx hy
+    exact h.not_shared_roots hn hnofour x y hxy a b polarity hopa hopb hx hy
   · exact Nat.not_le_of_gt (hnofour x polarity)
       (h.four_deleted_of_distinct_consumers hn x y hxy a b d polarity hopa hopb hopd hx hy hbd)
 
