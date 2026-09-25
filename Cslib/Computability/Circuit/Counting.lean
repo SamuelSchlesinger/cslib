@@ -109,10 +109,8 @@ private def relabel (c : Program σ n g × Wire n g) (π : Equiv.Perm (Fin g)) :
 private theorem relabel_line_eval (c : Program σ n g × Wire n g) (π : Equiv.Perm (Fin g))
     (x : Fin n → U) (v : Fin g → U) (a : Fin g) :
     ((relabel c π).1 a).eval I x v =
-      (c.1.lines (π.symm a)).eval I x (v ∘ π) := by
-  apply Line.eval_mapRenaming
-  intro gate
-  simp [Wire.Renaming.ofPermutation]
+      (c.1.lines (π.symm a)).eval I x (v ∘ π) :=
+  Line.eval_mapRenaming _ _ _ _ _ _ fun _ => rfl
 
 private theorem relabel_unique (c : Program σ n g × Wire n g) (π : Equiv.Perm (Fin g))
     (x : Fin n → U) (v : Fin g → U)
@@ -126,7 +124,7 @@ private theorem relabel_unique (c : Program σ n g × Wire n g) (π : Equiv.Perm
 
 private theorem relabel_output (c : Program σ n g × Wire n g) (π : Equiv.Perm (Fin g))
     (x : Fin n → U) :
-    Fin.addCases x (c.1.eval I x ∘ π.symm) (relabel c π).2 = c.1.trace I x c.2 := by
+    Wire.elim x (c.1.eval I x ∘ π.symm) (relabel c π).2 = c.1.trace I x c.2 := by
   apply Wire.Renaming.value_apply
   intro gate
   simp [Wire.Renaming.ofPermutation, Function.comp_def]
@@ -177,7 +175,7 @@ theorem card_irredundantFunctions_mul_factorial_le (I : Interpretation σ U) (n 
   classical
   have h := Fintype.card_le_of_injective _ (relabel_injective (I := I) (n := n) (g := g))
   simpa only [Fintype.card_prod, Fintype.card_coe, Fintype.card_perm, Fintype.card_fin,
-    Fintype.card_fun] using h
+    Fintype.card_fun, Wire.card] using h
 
 /-- Normalizing a circuit with at most `s` gates leaves an irredundant program with at most `s`
 gates computing the same function. -/
