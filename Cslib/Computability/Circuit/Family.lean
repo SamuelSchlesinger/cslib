@@ -11,76 +11,109 @@ public import Cslib.Computability.Languages.Slice
 public import Cslib.Foundations.Data.BitString
 
 /-!
-# Circuit families and size classes
+# Circuit families
 
 A circuit has a fixed number of inputs, while the words of a language have every length, so a
 language is decided by a family of circuits, one for each input length. The circuit on `n` inputs
 only has to handle the words of length `n`, the slice `L.slice n` of the language, and nothing
 relates the circuits for different lengths: families are a nonuniform model of computation.
 
-`SIZE I s` is the class of languages decided under `I` by a family whose circuit on `n` inputs has
-at most `s n` gates, following [Arora and Barak, Definition 6.2][AroraBarak09]. The bound holds
-exactly at every length, not asymptotically. It is stated through the existence of a family, so
-that it makes sense over any basis; over a complete basis it is the class of languages whose
-slices have complexity at most the bound.
-
-## References
-
-* [S. Arora and B. Barak, *Computational Complexity: A Modern Approach*,
-  Section 6.1][AroraBarak09]
+The letters of a word are fed to the circuit as values of the carrier, and the single output
+letter is read as a verdict by a function `accept` into `Bool`. A language is decidable within a
+size bound `s` when some family decides it with at most `s n` gates on `n` inputs, exactly at
+every length. Over a carrier `Bool` read by `id`, this is a bound on the complexity of every
+slice. The classes `SIZE` and P/poly of the literature, over the De Morgan basis, are in
+`Cslib.Computability.Circuit.Boolean.Family`.
 -/
 
 @[expose] public section
 
 namespace Cslib.Circuits
 
-universe v
+universe v u
 
-variable {σ : Signature.{v}}
+variable {σ : Signature.{v}} {α : Type u}
 
 /-- A family of single-output circuits, one for each number of inputs. -/
 abbrev CircuitFamily (σ : Signature.{v}) := (n : ℕ) → Circuit σ n 1
 
-/-- A circuit family decides `L` under `I` when, for every `n`, its circuit on `n` inputs
-computes the slice of `L` at length `n`. -/
-def CircuitFamily.Decides (F : CircuitFamily σ) (I : Interpretation σ Bool)
-    (L : Language Bool) : Prop :=
-  ∀ n, (F n).Computes I (fun x _ => L.slice n x)
+/-- A circuit family decides `L` under `I` when, for every `n`, reading the output of its circuit
+on `n` inputs through `accept` gives the slice of `L` at length `n`. -/
+def CircuitFamily.Decides (F : CircuitFamily σ) (I : Interpretation σ α) (accept : α → Bool)
+    (L : Language α) : Prop :=
+  ∀ n (x : Fin n → α), accept ((F n).eval I x 0) = L.slice n x
 
-theorem CircuitFamily.decides_iff {F : CircuitFamily σ} {I : Interpretation σ Bool}
-    {L : Language Bool} :
-    F.Decides I L ↔ ∀ n (x : BitString n), (F n).eval I x 0 = true ↔ List.ofFn x ∈ L := by
+/-- A language is decidable within the size bound `s` by circuits over `I` when some family
+decides it, reading outputs through `accept`, with at most `s n` gates on `n` inputs. -/
+def DecidableInSize (L : Language α) (I : Interpretation σ α) (accept : α → Bool)
+    (s : ℕ → ℕ) : Prop :=
+  ∃ F : CircuitFamily σ, F.Decides I accept L ∧ ∀ n, (F n).size ≤ s n
+
+variable {F : CircuitFamily σ} {I : Interpretation σ α} {accept : α → Bool} {L : Language α}
+  {s s' : ℕ → ℕ}
+
+theorem CircuitFamily.decides_iff :
+    F.Decides I accept L ↔
+      ∀ n (x : Fin n → α), accept ((F n).eval I x 0) = true ↔ List.ofFn x ∈ L := by
   unfold CircuitFamily.Decides
-  refine forall_congr' fun n => ?_
-  simp only [Circuit.Computes, funext_iff, Fin.forall_fin_one]
-  refine forall_congr' fun x => ?_
+  refine forall₂_congr fun n x => ?_
   rw [← Language.slice_eq_true_iff]
   exact Bool.eq_iff_iff
 
-/-- The languages decided under `I` by a circuit family whose circuit on `n` inputs has at most
-`s n` gates. -/
-def SIZE (I : Interpretation σ Bool) (s : ℕ → ℕ) : Set (Language Bool) :=
-  {L | ∃ F : CircuitFamily σ, F.Decides I L ∧ ∀ n, (F n).size ≤ s n}
+/-- The size bound can be weakened. -/
+theorem DecidableInSize.mono (h : DecidableInSize L I accept s) (hs : ∀ n, s n ≤ s' n) :
+    DecidableInSize L I accept s' :=
+  h.imp fun _ ⟨hF, hsize⟩ => ⟨hF, fun n => (hsize n).trans (hs n)⟩
 
-variable {I : Interpretation σ Bool} {s : ℕ → ℕ} {L : Language Bool}
+/-- A language is decidable within `s` exactly when each slice is `accept` of some function of
+extended complexity at most the bound. -/
+theorem decidableInSize_iff_exists_ecomplexity_le :
+    DecidableInSize L I accept s ↔
+      ∀ n, ∃ f : (Fin n → α) → α, accept ∘ f = L.slice n ∧
+        ecomplexity I (fun x (_ : Fin 1) => f x) ≤ s n := by
+  constructor
+  · rintro ⟨F, hF, hs⟩ n
+    refine ⟨fun x => (F n).eval I x 0, funext (hF n), ?_⟩
+    refine (ecomplexity_le_of_computes (F n) fun x => ?_).trans (by exact_mod_cast hs n)
+    funext i
+    rw [Fin.fin_one_eq_zero i]
+  · intro h
+    choose f hf hs using h
+    choose F hF hsize using fun n => ecomplexity_le_iff.mp (hs n)
+    refine ⟨F, fun n x => ?_, hsize⟩
+    rw [congrFun (hF n x) 0, ← hf n]
+    rfl
 
-theorem SIZE_mono : Monotone (SIZE I) := by
-  rintro s₁ s₂ h L ⟨F, hF, hs⟩
-  exact ⟨F, hF, fun n => (hs n).trans (h n)⟩
+/-! ### Boolean carrier
 
-/-- A language is in `SIZE I s` exactly when every slice has extended complexity at most the
-bound, so a slice with no circuit keeps the language out of every size class. -/
-theorem mem_SIZE_iff_ecomplexity_le :
-    L ∈ SIZE I s ↔ ∀ n, ecomplexity I (fun x (_ : Fin 1) => L.slice n x) ≤ s n := by
-  refine ⟨fun ⟨F, hF, hs⟩ n => (ecomplexity_le_of_computes (F n) (hF n)).trans ?_, fun h => ?_⟩
-  · exact_mod_cast hs n
-  · choose F hF hs using fun n => ecomplexity_le_iff.mp (h n)
+Over the carrier `Bool`, reading the output by `id` makes the circuit compute the slice itself. -/
+
+section Bool
+
+variable {I : Interpretation σ Bool} {L : Language Bool}
+
+theorem CircuitFamily.decides_id_iff :
+    F.Decides I id L ↔ ∀ n, (F n).Computes I (fun x _ => L.slice n x) := by
+  simp only [CircuitFamily.Decides, Circuit.Computes, funext_iff, Fin.forall_fin_one, id]
+
+/-- Over the carrier `Bool`, a language is decidable within `s` exactly when every slice has
+extended complexity at most the bound, so a slice with no circuit keeps the language out. -/
+theorem decidableInSize_id_iff_ecomplexity_le :
+    DecidableInSize L I id s ↔ ∀ n, ecomplexity I (fun x (_ : Fin 1) => L.slice n x) ≤ s n := by
+  simp only [DecidableInSize, CircuitFamily.decides_id_iff]
+  constructor
+  · rintro ⟨F, hF, hs⟩ n
+    exact (ecomplexity_le_of_computes (F n) (hF n)).trans (by exact_mod_cast hs n)
+  · intro h
+    choose F hF hs using fun n => ecomplexity_le_iff.mp (h n)
     exact ⟨F, hF, hs⟩
 
-/-- Over a complete basis, a language is in `SIZE I s` exactly when every slice has complexity
-at most the bound. -/
-theorem mem_SIZE_iff_complexity_le [I.IsComplete] :
-    L ∈ SIZE I s ↔ ∀ n, complexity I (fun x (_ : Fin 1) => L.slice n x) ≤ s n := by
-  simp only [mem_SIZE_iff_ecomplexity_le, ← natCast_complexity, ENat.natCast_le_natCast]
+/-- Over a complete basis on `Bool`, a language is decidable within `s` exactly when every slice
+has complexity at most the bound. -/
+theorem decidableInSize_id_iff_complexity_le [I.IsComplete] :
+    DecidableInSize L I id s ↔ ∀ n, complexity I (fun x (_ : Fin 1) => L.slice n x) ≤ s n := by
+  simp only [decidableInSize_id_iff_ecomplexity_le, ← natCast_complexity, ENat.natCast_le_natCast]
+
+end Bool
 
 end Cslib.Circuits

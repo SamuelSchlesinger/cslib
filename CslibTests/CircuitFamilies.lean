@@ -21,8 +21,8 @@ example (f : ∀ n, BooleanFunction n) : (Language.ofSlices f).slice 3 = f 3 := 
   simp
 
 -- Every slice of the empty language is the constant `false`, which costs one gate.
-example : (0 : Language Bool) ∈ SIZE interpretation fun _ => 1 := by
-  rw [mem_SIZE_iff_ecomplexity_le]
+example : DecidableInSize (0 : Language Bool) interpretation id fun _ => 1 := by
+  rw [decidableInSize_id_iff_ecomplexity_le]
   intro n
   have h : (0 : Language Bool).slice n = fun _ => false := by
     funext x
