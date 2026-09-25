@@ -7,13 +7,15 @@ Authors: Samuel Schlesinger
 import Cslib.Computability.Circuit.Boolean.Complexity
 import Cslib.Computability.Circuit.Boolean.Counting
 import Cslib.Computability.Circuit.Boolean.Lupanov
+import Cslib.Computability.Circuit.Boolean.Redkin
 import Cslib.Computability.Circuit.Boolean.Shannon
 
 /-!
 # Boolean circuit tests
 
 Zero-input constants, zero-gate projections, shared AND/NAND outputs, circuit complexity over
-the complete De Morgan basis, and compatibility of the Shannon and Lupanov bounds.
+the complete De Morgan basis, compatibility of the Shannon and Lupanov bounds, and Red'kin's
+exact complexity of parity.
 -/
 
 namespace CslibTests.BooleanCircuits
@@ -96,5 +98,17 @@ example (ε : ℝ) (hε : 0 < ε) :
   refine ⟨max N M, fun n hn => ?_⟩
   obtain ⟨f, hf⟩ := hN n ((le_max_left N M).trans hn)
   exact ⟨f, hf, hM n ((le_max_right N M).trans hn) f⟩
+
+-- Red'kin's theorem: parity on `n + 1` inputs needs exactly `4 * n` De Morgan gates.
+example (n : ℕ) : complexity interpretation (fun x (_ : Fin 1) => parity (n + 1) x) = 4 * n :=
+  complexity_parity_succ n
+
+example : complexity interpretation (fun (x : BitString 3) (_ : Fin 1) => parity 3 x) = 8 :=
+  complexity_parity (by decide)
+
+-- The lower bound applies to every circuit, for parity and for its complement.
+example (n : ℕ) (c : Circuit signature (n + 1) 1)
+    (hc : c.Computes interpretation fun x _ => !parity (n + 1) x) : 4 * n ≤ c.size :=
+  parityPhase_size_lowerBound n true c (by simpa [parityPhase] using hc)
 
 end CslibTests.BooleanCircuits

@@ -157,21 +157,18 @@ private def empty (selected : Fin (n + 1)) (fixed : Bool) :
     ProgramRestriction (Program.empty : Program signature (n + 1) 0) selected fixed where
   gateCount := 0
   result := .empty
-  values := Fin.insertNth selected (.constant fixed)
-    (fun remaining => .wire (Wire.input remaining))
+  values := Wire.elim
+    (Fin.insertNth (α := fun _ => Residual n 0) selected (.constant fixed)
+      (fun remaining => .wire (Wire.input remaining)))
+    Fin.elim0
   trace_eq := by
     intro input sourceWire
-    let restrictedInput : Fin (n + 1) → Bool :=
-      Fin.insertNth selected fixed input
-    have htrace (i : Fin (n + 1)) :
-        (Program.empty : Program signature (n + 1) 0).trace interpretation
-            restrictedInput i = restrictedInput i := by
-      simpa [Wire.input] using
-        Program.trace_input (Program.empty : Program signature (n + 1) 0)
-          interpretation restrictedInput i
-    refine Fin.succAboveCases selected ?_ (fun remaining => ?_) sourceWire
-    · simp [Residual.eval, htrace, restrictedInput]
-    · simp [Residual.eval, htrace, restrictedInput]
+    cases sourceWire with
+    | gate j => exact j.elim0
+    | input i =>
+      refine Fin.succAboveCases selected ?_ (fun remaining => ?_) i
+      · simp [Residual.eval]
+      · simp [Residual.eval]
   deleted := ∅
   count_eq := rfl
 
@@ -188,14 +185,18 @@ private def reuseLast {source : Program signature (n + 1) g}
     ProgramRestriction (source.gate line) selected fixed where
   gateCount := prior.gateCount
   result := prior.result
-  values := Fin.lastCases value prior.values
+  values wire := Wire.lastCases (motive := fun _ => Residual n prior.gateCount) value
+    prior.values wire
   trace_eq := by
     intro input sourceWire
-    refine Fin.lastCases ?_ (fun oldWire => ?_) sourceWire
-    · have hgate := Program.trace_gate_last source line interpretation
+    induction sourceWire using Wire.lastCases with
+    | last =>
+      have hgate := Program.eval_gate_last source line interpretation
         (Fin.insertNth selected fixed input)
-      simpa [Nat.add_assoc] using (value_eq input).trans hgate.symm
-    · simpa only [Fin.lastCases_castSucc, Program.trace_gate_castSucc] using
+      simpa only [Wire.lastCases_last, Program.trace_gateWire, Program.gateFunction_apply] using
+        (value_eq input).trans hgate.symm
+    | castSucc oldWire =>
+      simpa only [Wire.lastCases_castSucc, Program.trace_gate_castSucc] using
         prior.trace_eq input oldWire
   deleted := insert (Fin.last g) (prior.deleted.map Fin.castSuccEmb)
   count_eq := by
@@ -217,14 +218,16 @@ private def keepLast {source : Program signature (n + 1) g}
     ProgramRestriction (source.gate line) selected fixed where
   gateCount := prior.gateCount + 1
   result := prior.result.gate mappedLine
-  values := Fin.lastCases (.wire (Fin.last (n + prior.gateCount)))
-    (fun oldWire => (prior.values oldWire).castSucc)
+  values wire := Wire.lastCases (motive := fun _ => Residual n (prior.gateCount + 1))
+    (.wire (Wire.gate (Fin.last prior.gateCount)))
+    (fun oldWire => (prior.values oldWire).castSucc) wire
   trace_eq := by
     intro input sourceWire
-    refine Fin.lastCases ?_ (fun oldWire => ?_) sourceWire
-    · simpa [Residual.eval, Program.trace_gate_last, Nat.add_assoc] using
-        line_eq input
-    · simpa only [Fin.lastCases_castSucc, Residual.eval_castSucc,
+    induction sourceWire using Wire.lastCases with
+    | last =>
+      simpa [Residual.eval] using line_eq input
+    | castSucc oldWire =>
+      simpa only [Wire.lastCases_castSucc, Residual.eval_castSucc,
         Program.trace_gate_castSucc] using prior.trace_eq input oldWire
   deleted := prior.deleted.map Fin.castSuccEmb
   count_eq := by
@@ -436,7 +439,7 @@ theorem restrictProgram_deletes_constant (source : Program signature (n + 1) g)
 /-- A gate duplicating an earlier wire is omitted, at any position in the program. -/
 theorem restrictProgram_deletes_equal (source : Program signature (n + 1) g)
     (selected : Fin (n + 1)) (fixed : Bool) (gate : Fin g) (wire : Wire (n + 1) g)
-    (hbefore : wire.val < n + 1 + gate.val)
+    (hbefore : wire.index.val < n + 1 + gate.val)
     (heq : ∀ input : Fin n → Bool,
       source.eval interpretation (Fin.insertNth selected fixed input) gate =
       source.trace interpretation (Fin.insertNth selected fixed input) wire) :
@@ -444,18 +447,20 @@ theorem restrictProgram_deletes_equal (source : Program signature (n + 1) g)
   induction source with
   | empty => exact gate.elim0
   | @gate g source line ih =>
-    have hw : wire.val < n + 1 + g := by omega
-    let prior : Wire (n + 1) g := ⟨wire.val, hw⟩
-    have hwire : wire = prior.castSucc := rfl
-    rw [hwire] at heq
-    induction gate using Fin.lastCases with
+    induction wire using Wire.lastCases with
     | last =>
-      apply restrictProgram_deletes_equal_last line selected fixed prior
-      simpa using heq
-    | cast gate =>
-      apply restrictProgram_deleted_castSucc line selected fixed gate
-      apply ih gate prior hbefore
-      simpa using heq
+      have := gate.isLt
+      simp only [Wire.index_gate, Fin.val_natAdd, Fin.val_last] at hbefore
+      omega
+    | castSucc prior =>
+      induction gate using Fin.lastCases with
+      | last =>
+        apply restrictProgram_deletes_equal_last line selected fixed prior
+        simpa using heq
+      | cast gate =>
+        apply restrictProgram_deleted_castSucc line selected fixed gate
+        apply ih gate prior (by simpa using hbefore)
+        simpa using heq
 
 /-- Constant internal gates can be eliminated when the output is nonconstant. -/
 theorem _root_.Cslib.Circuits.Circuit.exists_smaller_of_constant (c : Circuit signature n 1)

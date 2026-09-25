@@ -6,7 +6,7 @@ Authors: Samuel Schlesinger
 module
 
 public import Cslib.Computability.Circuit.Boolean.Synthesis
-public import Cslib.Computability.Circuit.Complexity
+public import Cslib.Computability.Circuit.Boolean.Complexity
 
 /-!
 # Parity circuits

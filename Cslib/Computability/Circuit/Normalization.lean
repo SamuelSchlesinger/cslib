@@ -76,7 +76,7 @@ theorem Circuit.exists_irredundant (c : Circuit σ n m) (i : Interpretation σ U
 /-- A gate duplicating an earlier wire can be removed without changing the output. -/
 theorem Circuit.exists_smaller_of_equal {I : Interpretation σ U} (c : Circuit σ n 1)
     (gate : Fin c.size) (wire : Wire n c.size)
-    (hbefore : wire.val < n + gate.val)
+    (hbefore : wire.index.val < n + gate.val)
     (heq : c.program.gateFunction I gate = c.program.wireFunction I wire) :
     ∃ d : Circuit σ n 1, d.eval I = c.eval I ∧ d.size < c.size := by
   classical
@@ -129,14 +129,15 @@ theorem Circuit.exists_smaller_of_unused {I : Interpretation σ U}
             inputs n ∪ f '' {i | i < j} := by
         have hlt := c.program.lines_wires_lt j a
         generalize hw : (c.program.lines j).wires a = wire at hlt ⊢
-        induction wire using Fin.addCases with
-        | left i => exact Or.inl ⟨i, (c.program.wireFunction_input I i).symm⟩
-        | right i =>
+        cases wire with
+        | input i => exact Or.inl ⟨i, (c.program.wireFunction_input I i).symm⟩
+        | gate i =>
           have hne : i ≠ gate := by
             intro h
             subst i
             exact hread j ⟨a, hw⟩
-          refine Or.inr ⟨i, by simpa using hlt, ?_⟩
+          simp only [Wire.index_gate, Fin.val_natAdd] at hlt
+          refine Or.inr ⟨i, Fin.lt_def.mpr (by omega), ?_⟩
           simp [f, hne]
       have h := Synthesis.gate (I := I) (c.program.lines j).op
         (fun a => c.program.wireFunction I ((c.program.lines j).wires a)) hargs
@@ -148,10 +149,10 @@ theorem Circuit.exists_smaller_of_unused {I : Interpretation σ U}
       simpa only [heq, hj, ite_false] using h
   have hout : c.program.wireFunction I (c.outputs 0) ∈ inputs n ∪ Set.range f := by
     generalize hw : c.outputs 0 = wire at houtput ⊢
-    induction wire using Fin.addCases with
-    | left i => exact Or.inl ⟨i, (c.program.wireFunction_input I i).symm⟩
-    | right j =>
-      have hne : j ≠ gate := fun h => houtput (congrArg (Fin.natAdd n) h)
+    cases wire with
+    | input i => exact Or.inl ⟨i, (c.program.wireFunction_input I i).symm⟩
+    | gate j =>
+      have hne : j ≠ gate := fun h => houtput (congrArg Wire.gate h)
       exact Or.inr ⟨j, by simp [f, hne]⟩
   obtain ⟨d, hd, hsize⟩ :=
     (hs.mono Set.Subset.rfl (Set.singleton_subset_iff.mpr hout) le_rfl).exists_circuit

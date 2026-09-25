@@ -41,7 +41,7 @@ def Program.consumers (p : Program σ n g) (wire : Wire n g) : Finset (Fin g) :=
 
 /-- A gate can only read input wires and earlier gate wires. -/
 theorem Program.Reads.lt {p : Program σ n g} {gate : Fin g} {wire : Wire n g}
-    (h : p.Reads gate wire) : wire.val < n + gate.val := by
+    (h : p.Reads gate wire) : wire.index.val < n + gate.val := by
   obtain ⟨argument, rfl⟩ := h
   exact p.lines_wires_lt gate argument
 
@@ -51,23 +51,23 @@ theorem Program.trace_eq_of_boundary (p : Program σ n g) (I : Interpretation σ
     (hinput : ∀ i, Wire.input i ∉ boundary → x i = y i)
     (hgate : ∀ j : Fin g, n + j.val < limit → Wire.gate j ∉ boundary →
       (∃ a, (p.lines j).wires a ∈ boundary) → p.eval I x j = p.eval I y j)
-    (wire : Wire n g) (hwire : wire ∉ boundary) (hlimit : wire.val < limit) :
+    (wire : Wire n g) (hwire : wire ∉ boundary) (hlimit : wire.index.val < limit) :
     p.trace I x wire = p.trace I y wire := by
   classical
-  induction wire using Fin.strong_induction_on with
-  | h wire ih =>
-    induction wire using Fin.addCases with
-    | left i => simpa using hinput i hwire
-    | right j =>
-      simp only [Program.trace, Fin.addCases_right]
+  induction hindex : wire.index.val using Nat.strong_induction_on generalizing wire with
+  | _ k ih =>
+    subst hindex
+    cases wire with
+    | input i => simpa using hinput i hwire
+    | gate j =>
+      simp only [Program.trace_gateWire, Program.gateFunction_apply]
       by_cases hcross : ∃ a, (p.lines j).wires a ∈ boundary
       · exact hgate j hlimit hwire hcross
       · rw [← p.lines_eval I x j, ← p.lines_eval I y j]
         unfold Line.eval
         congr 1
         funext a
-        apply ih ((p.lines j).wires a) (p.lines_wires_lt j a)
-        · exact fun ha => hcross ⟨a, ha⟩
-        · exact Nat.lt_trans (p.lines_wires_lt j a) hlimit
+        exact ih _ (p.lines_wires_lt j a) _ (fun ha => hcross ⟨a, ha⟩)
+          (Nat.lt_trans (p.lines_wires_lt j a) hlimit) rfl
 
 end Cslib.Circuits

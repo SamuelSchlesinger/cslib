@@ -119,7 +119,7 @@ private theorem exists_minimalParity (n : ℕ) :
       · exact le_rfl
   obtain ⟨phase, hphase⟩ := hphase
   obtain ⟨c, hc, hsize⟩ := exists_computes_size_eq_complexity (I := interpretation)
-    (F := fun x (_ : Fin 1) => parityPhase n phase x)
+    (f := fun x (_ : Fin 1) => parityPhase n phase x)
   refine ⟨phase, c, hc, fun other d hd => ?_⟩
   rw [hsize]
   exact (hphase other).trans (complexity_le_of_computes d hd)
@@ -149,7 +149,7 @@ private theorem gate_nonconstant (gate : Fin c.size) (value : Bool) :
   exact Nat.not_lt_of_ge (h.optimal d hd) hsize
 
 private theorem gate_ne_wire (gate : Fin c.size) (wire : Wire (n + 1) c.size)
-    (hbefore : wire.val < n + 1 + gate.val) :
+    (hbefore : wire.index.val < n + 1 + gate.val) :
     c.program.gateFunction interpretation gate ≠ c.program.wireFunction interpretation wire := by
   intro heq
   obtain ⟨d, hd, hsize⟩ := c.exists_smaller_of_equal gate wire hbefore heq
@@ -230,7 +230,7 @@ private theorem bottleneck_eq_input {m : ℕ} (c : Circuit signature n 1)
     (cancel : ∀ a b, operation a b ≠ operation (!a) b → operation a b = a)
     (hgate : ∀ x, c.program.eval interpretation (substitution x) gate =
       operation (x selected) (c.program.trace interpretation (substitution x) other))
-    (hother : other ∉ boundary) (hbefore : other.val < n + gate.val)
+    (hother : other ∉ boundary) (hbefore : other.index.val < n + gate.val)
     (houtput : c.outputs 0 ∉ boundary)
     (hsensitive : ∀ x, c.eval interpretation (substitution x) 0 ≠
       c.eval interpretation (substitution (flip x selected)) 0)
@@ -256,7 +256,7 @@ private theorem bottleneck_eq_input {m : ℕ} (c : Circuit signature n 1)
     intro heq
     apply hsensitive x
     apply c.program.trace_eq_of_boundary interpretation _ _ boundary (n + c.size)
-      (hinput x) _ (c.outputs 0) houtput (c.outputs 0).isLt
+      (hinput x) _ (c.outputs 0) houtput (c.outputs 0).index.isLt
     intro j _ hb ha
     by_cases hj : j = gate
     · subst j
@@ -299,8 +299,8 @@ private theorem smaller_of_unique_not_consumer (c : Circuit signature n 1)
             ((c.program.lines j).wires a)) ∈ inputs n ∪ f '' {i | i < j} := by
         have hlt := c.program.lines_wires_lt j a
         generalize hw : (c.program.lines j).wires a = wire at hlt ⊢
-        induction wire using Fin.addCases with
-        | left i =>
+        cases wire with
+        | input i =>
           have hne : i ≠ selected := by
             intro heq
             subst i
@@ -308,8 +308,9 @@ private theorem smaller_of_unique_not_consumer (c : Circuit signature n 1)
           refine Or.inl ⟨i, ?_⟩
           funext x
           simp [flip, hne]
-        | right i =>
-          refine Or.inr ⟨i, by simpa using hlt, ?_⟩
+        | gate i =>
+          simp only [Wire.index_gate, Fin.val_natAdd] at hlt
+          refine Or.inr ⟨i, Fin.lt_def.mpr (by omega), ?_⟩
           funext x
           simp [f, Program.gateFunction]
       have hs' := Synthesis.gate (I := interpretation) (c.program.lines j).op
@@ -325,13 +326,13 @@ private theorem smaller_of_unique_not_consumer (c : Circuit signature n 1)
       inputs n ∪ Set.range f := by
     simp only [Circuit.eval, Function.comp_apply]
     generalize hw : c.outputs 0 = wire at houtput ⊢
-    induction wire using Fin.addCases with
-    | left i =>
-      have hne : i ≠ selected := fun h => houtput (congrArg (Fin.castAdd c.size) h)
+    cases wire with
+    | input i =>
+      have hne : i ≠ selected := fun h => houtput (congrArg Wire.input h)
       refine Or.inl ⟨i, ?_⟩
       funext x
       simp [flip, hne]
-    | right j => exact Or.inr ⟨j, by funext x; simp [f, Program.gateFunction]⟩
+    | gate j => exact Or.inr ⟨j, by funext x; simp [f, Program.gateFunction]⟩
   obtain ⟨d, hd, hsize⟩ :=
     (hs.mono Set.Subset.rfl (Set.singleton_subset_iff.mpr hout) le_rfl).exists_circuit
   refine ⟨d, ?_, by omega⟩
@@ -374,8 +375,8 @@ private theorem not_unique_consumer (hn : 0 < n) (selected : Fin (n + 1))
       rw [← c.program.lines_eval]
       simpa [Line.eval, Program.trace, Function.comp_def] using
         hbinary (c.program.trace interpretation x)
-    have hearly : (Wire.input selected : Wire (n + 1) c.size).val < n + 1 + gate.val := by
-      simp only [Wire.input, Fin.val_castAdd]
+    have hearly : (Wire.input selected : Wire (n + 1) c.size).index.val < n + 1 + gate.val := by
+      simp only [Wire.index_input, Fin.val_castAdd]
       omega
     have hother : other ≠ Wire.input selected := by
       intro heq
@@ -408,7 +409,7 @@ private theorem two_le_input_consumers (hn : 0 < n) (selected : Fin (n + 1)) :
         have hne : i ≠ selected := by intro heq; subst i; exact hi rfl
         simp [flip, hne])
       (fun j _ _ hc => (hnone ⟨j, by simpa [Program.Reads] using hc⟩).elim)
-      (c.outputs 0) (h.output_ne_input hn selected) (c.outputs 0).isLt
+      (c.outputs 0) (h.output_ne_input hn selected) (c.outputs 0).index.isLt
     exact h.sensitive (fun _ => false) selected heq
   obtain ⟨gate, hgate⟩ := hexists
   by_contra hcard
@@ -424,11 +425,7 @@ private theorem no_read_between_consumers (selected : Fin (n + 1)) (a b : Fin c.
     (hb : c.program.Reads b (Wire.input selected)) :
     ¬ c.program.Reads b (Wire.gate a) := by
   intro hab
-  have hne : (Wire.gate a : Wire (n + 1) c.size) ≠ Wire.input selected := by
-    intro heq
-    have := congrArg Fin.val heq
-    simp only [Wire.gate, Wire.input, Fin.val_natAdd, Fin.val_castAdd] at this
-    omega
+  have hne : (Wire.gate a : Wire (n + 1) c.size) ≠ Wire.input selected := nofun
   obtain ⟨_, hreads, _⟩ | ⟨pb, other, _, hreads, hbinary⟩ :=
     Line.reads_view (c.program.lines b) (Wire.input selected) hb
   · exact hne ((hreads (Wire.gate a)).mp hab)
@@ -458,11 +455,11 @@ private theorem no_read_between_consumers (selected : Fin (n + 1)) (a b : Fin c.
       simpa [Line.eval, Program.trace, Function.comp_def] using
         hbinary (c.program.trace interpretation x)
     let wire : Wire (n + 1) c.size := if pa = pb then Wire.gate a else Wire.input selected
-    have hbefore : wire.val < n + 1 + b.val := by
+    have hbefore : wire.index.val < n + 1 + b.val := by
       dsimp [wire]
       split
       · exact hab.lt
-      · simp only [Wire.input, Fin.val_castAdd]
+      · simp only [Wire.index_input, Fin.val_castAdd]
         omega
     apply h.gate_ne_wire b wire hbefore
     funext x
@@ -537,9 +534,9 @@ private theorem four_deleted_of_two_constants (hn : 0 < n) (selected : Fin (n + 
       (h.output_ne_of_restricted_constant hn selected fixed d _ hvd)
     have hmem : e ∈ deleted := restrictProgram_deletes_consumer _ _ _ _ _ hde _
       (by simpa [Program.gateFunction] using hvd)
-    have hltad : a.val < d.val := by have := had.lt; simpa [Wire.gate] using this
-    have hltbd : b.val < d.val := by have := hbe.lt; simpa [Wire.gate] using this
-    have hltde : d.val < e.val := by have := hde.lt; simpa [Wire.gate] using this
+    have hltad : a.val < d.val := by have := had.lt; simpa using this
+    have hltbd : b.val < d.val := by have := hbe.lt; simpa using this
+    have hltde : d.val < e.val := by have := hde.lt; simpa using this
     exact Finset.three_lt_card_iff.mpr ⟨a, b, d, e, hda, hdb, hdd, hmem, hab,
       had', by intro heq; subst e; omega, hbd', by intro heq; subst e; omega,
       by intro heq; subst e; omega⟩
@@ -679,20 +676,22 @@ private theorem first_gate (hn : 0 < n)
     | not => decide
     | and => decide
     | or => decide
+  -- The first gate can only read inputs.
+  have hinput (wire : Wire (n + 1) c.size) (hwire : wire.index.val < n + 1 + a.val) :
+      ∃ i, wire = Wire.input i := by
+    cases wire with
+    | input i => exact ⟨i, rfl⟩
+    | gate j =>
+      simp only [Wire.index_gate, Fin.val_natAdd, a] at hwire
+      omega
   let argument : Fin (signature.Arity (c.program.lines a).op) := ⟨0, harity⟩
-  let wire := (c.program.lines a).wires argument
-  have hwire : wire.val < n + 1 := by simpa [a] using c.program.lines_wires_lt a argument
-  let x : Fin (n + 1) := ⟨wire.val, hwire⟩
-  have hread : c.program.Reads a (Wire.input x) := ⟨argument, Fin.ext rfl⟩
+  obtain ⟨x, hx⟩ := hinput _ (c.program.lines_wires_lt a argument)
+  have hread : c.program.Reads a (Wire.input x) := ⟨argument, hx⟩
   obtain ⟨hop, _, _⟩ | ⟨polarity, other, hop, hreads, hbinary⟩ :=
     Line.reads_view (c.program.lines a) (Wire.input x) hread
   · obtain ⟨u, v, hu, hv, hreads⟩ := h.mixed_consumers hn hnofour x
     rcases (hreads a).mp hread with rfl | rfl <;> simp_all
-  · have hlt : other.val < n + 1 := by
-      have := Program.Reads.lt ((hreads other).mpr (Or.inr rfl))
-      simpa [a] using this
-    let y : Fin (n + 1) := ⟨other.val, hlt⟩
-    have hy : other = Wire.input y := Fin.ext rfl
+  · obtain ⟨y, hy⟩ := hinput other (Program.Reads.lt ((hreads other).mpr (Or.inr rfl)))
     have heval (input : Fin (n + 1) → Bool) : c.program.eval interpretation input a =
         binary polarity (input x) (input y) := by
       rw [← c.program.lines_eval]
@@ -744,11 +743,7 @@ private theorem binary_inputs (gate : Fin c.size) (x y : Fin (n + 1)) (hxy : x �
       exact (hxy heq.symm).elim
     · exact hh.symm
   have hdisjoint (i : Fin (n + 1)) (j : Fin c.size) :
-      (Wire.gate j : Wire (n + 1) c.size) ≠ Wire.input i := by
-    intro heq
-    have := congrArg Fin.val heq
-    simp only [Wire.gate, Wire.input, Fin.val_natAdd, Fin.val_castAdd] at this
-    omega
+      (Wire.gate j : Wire (n + 1) c.size) ≠ Wire.input i := nofun
   refine ⟨?_, ?_⟩
   · intro j hread
     rcases (hreads _).mp hread with hh | hh
@@ -786,7 +781,7 @@ private theorem restricted_bottleneck (selected : Fin (n + 1)) (fixed : Bool) (r
     (hgate : ∀ x, c.program.eval interpretation (Fin.insertNth selected fixed x) gate =
       binary polarity (x remaining)
         (c.program.trace interpretation (Fin.insertNth selected fixed x) other))
-    (hother : other ∉ boundary) (hbefore : other.val < n + 1 + gate.val)
+    (hother : other ∉ boundary) (hbefore : other.index.val < n + 1 + gate.val)
     (houtput : c.outputs 0 ∉ boundary)
     (hcross : ∀ x j, Wire.gate j ∉ boundary → j ≠ gate →
       (∃ a, (c.program.lines j).wires a ∈ boundary) →
@@ -921,8 +916,8 @@ private theorem four_deleted_of_constant_chain (hn : 0 < n) (selected : Fin (n +
   have hdd := restrictProgram_deletes_constant _ selected fixed vd d hvd
   have hmem := restrictProgram_deletes_consumer c.program selected fixed e _ hde vd
     (by simpa [Program.gateFunction] using hvd)
-  have hadlt : a.val < d.val := by simpa [Wire.gate] using had.lt
-  have hdelt : d.val < e.val := by simpa [Wire.gate] using hde.lt
+  have hadlt : a.val < d.val := by simpa using had.lt
+  have hdelt : d.val < e.val := by simpa using hde.lt
   exact Finset.three_lt_card_iff.mpr ⟨a, b, d, e, hda, hdb, hdd, hmem, hab,
     by intro heq; subst d; omega, by intro heq; subst e; omega,
     by intro heq; subst d; exact hroot a had,
@@ -1061,7 +1056,7 @@ private theorem not_shared_roots (hn : 0 < n)
     (by simpa [Program.gateFunction] using hva)
   have hmem : e ∈ (restrictProgram x polarity c.program).deleted := by
     apply restrictProgram_deletes_equal c.program x polarity e (Wire.input y)
-    · simp only [Wire.input, Fin.val_castAdd]
+    · simp only [Wire.index_input, Fin.val_castAdd]
       omega
     · intro input
       rw [hcopy, Program.trace_input, ← hremaining]

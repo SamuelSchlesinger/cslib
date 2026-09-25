@@ -13,7 +13,8 @@ public import Mathlib.Data.Fintype.Sum
 
 A `Wire inputCount gateCount` refers to an original input or an internal gate.
 A valuation of wires is assembled with `Wire.elim` from values for the inputs and
-values for the gates.
+values for the gates. `Wire.index` numbers the inputs first and then the gates in order,
+so that a gate reads only wires with a smaller index.
 
 `Wire.Renaming` fixes the original inputs and maps each gate to an input or gate
 in the target namespace. This file provides identity and composition, extension
@@ -62,6 +63,18 @@ instance : Fintype (Wire inputCount gateCount) :=
 @[simp] theorem card : Fintype.card (Wire inputCount gateCount) = inputCount + gateCount := by
   simp [Fintype.card_congr (equiv inputCount gateCount)]
 
+/-- The position of a wire when the inputs are listed first, followed by the gates in program
+order. A gate reads only wires whose index is below its own. -/
+def index : Wire inputCount gateCount → Fin (inputCount + gateCount)
+  | input i => Fin.castAdd gateCount i
+  | gate j => Fin.natAdd inputCount j
+
+@[simp] theorem index_input (i : Fin inputCount) :
+    (input i : Wire inputCount gateCount).index = Fin.castAdd gateCount i := rfl
+
+@[simp] theorem index_gate (j : Fin gateCount) :
+    (gate j : Wire inputCount gateCount).index = Fin.natAdd inputCount j := rfl
+
 /-- Regard a wire as a wire in a namespace with one additional gate. -/
 def castSucc : Wire inputCount gateCount → Wire inputCount (gateCount + 1)
   | input i => input i
@@ -83,6 +96,25 @@ def lastCases {motive : Wire inputCount (gateCount + 1) → Sort*}
   | input i => castSucc (input i)
   | gate j =>
       Fin.lastCases (motive := fun j => motive (gate j)) last (fun j => castSucc (gate j)) j
+
+@[simp] theorem lastCases_last {motive : Wire inputCount (gateCount + 1) → Sort*}
+    (last : motive (gate (Fin.last gateCount)))
+    (castSucc : ∀ wire : Wire inputCount gateCount, motive wire.castSucc) :
+    lastCases last castSucc (gate (Fin.last gateCount)) = last :=
+  Fin.lastCases_last (motive := fun j => motive (gate j)) ..
+
+@[simp] theorem lastCases_castSucc {motive : Wire inputCount (gateCount + 1) → Sort*}
+    (last : motive (gate (Fin.last gateCount)))
+    (castSucc : ∀ wire : Wire inputCount gateCount, motive wire.castSucc)
+    (wire : Wire inputCount gateCount) :
+    lastCases last castSucc wire.castSucc = castSucc wire := by
+  cases wire with
+  | input => rfl
+  | gate j => exact Fin.lastCases_castSucc (motive := fun j => motive (gate j)) ..
+
+@[simp] theorem val_index_castSucc (wire : Wire inputCount gateCount) :
+    (wire.castSucc.index : Nat) = wire.index := by
+  cases wire <;> rfl
 
 end Wire
 

@@ -298,12 +298,13 @@ end Synthesis
 
 /-- A preceding wire is either an input or a preceding gate function. -/
 theorem Program.wireFunction_mem_before {g : ℕ} (p : Program σ n g) (j : Fin g)
-    (wire : Wire n g) (hwire : wire.val < n + j.val) :
+    (wire : Wire n g) (hwire : wire.index.val < n + j.val) :
     p.wireFunction I wire ∈ inputs n ∪ p.gateFunction I '' {i | i < j} := by
-  induction wire using Fin.addCases with
-  | left i => exact Or.inl ⟨i, (p.wireFunction_input I i).symm⟩
-  | right i =>
-    exact Or.inr ⟨i, by simpa using hwire, (p.wireFunction_gate I i).symm⟩
+  cases wire with
+  | input i => exact Or.inl ⟨i, (p.wireFunction_input I i).symm⟩
+  | gate i =>
+    simp only [Wire.index_gate, Fin.val_natAdd] at hwire
+    exact Or.inr ⟨i, Fin.lt_def.mpr (by omega), (p.wireFunction_gate I i).symm⟩
 
 /-- Each program gate can be synthesized from the inputs and preceding gates. -/
 theorem Program.synthesis_step {g : ℕ} (p : Program σ n g) (j : Fin g) :
@@ -325,8 +326,8 @@ theorem Program.synthesis_of_steps {g : ℕ} (p : Program σ n g) (cost : Fin g 
   have h := (Synthesis.ordered_family _ cost step).with_sources
   apply h.mono Set.Subset.rfl _ le_rfl
   rintro f ⟨wire, rfl⟩
-  induction wire using Fin.addCases with
-  | left i => exact Or.inl ⟨i, (p.wireFunction_input I i).symm⟩
-  | right j => exact Or.inr ⟨j, (p.wireFunction_gate I j).symm⟩
+  cases wire with
+  | input i => exact Or.inl ⟨i, (p.wireFunction_input I i).symm⟩
+  | gate j => exact Or.inr ⟨j, (p.wireFunction_gate I j).symm⟩
 
 end Cslib.Circuits
