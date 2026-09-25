@@ -10,7 +10,8 @@ import Cslib.Computability.Circuit.Family
 /-!
 # Circuit family tests
 
-Slices of languages built from slices, and a constant-size family for the empty language.
+Slices of languages built from slices, and constant-size families for the empty language under
+two readings of the output.
 -/
 
 namespace CslibTests.CircuitFamilies
@@ -30,5 +31,15 @@ example : DecidableInSize (0 : Language Bool) interpretation id fun _ => 1 := by
     simp [Language.notMem_zero]
   rw [h]
   exact (Synthesis.const false).ecomplexity_le
+
+-- Reading the output through negation, the empty language is decided by constant `true`
+-- circuits instead.
+example : DecidableInSize (0 : Language Bool) interpretation not fun _ => 1 := by
+  rw [decidableInSize_iff_exists_ecomplexity_le]
+  intro n
+  refine ⟨fun _ => true, ?_, (Synthesis.const true).ecomplexity_le⟩
+  funext x
+  rw [Function.comp_apply, Bool.eq_iff_iff]
+  simp [Language.notMem_zero]
 
 end CslibTests.CircuitFamilies
