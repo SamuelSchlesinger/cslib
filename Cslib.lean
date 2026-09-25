@@ -36,7 +36,9 @@ public import Cslib.Computability.Automata.TwoWayNA.ComplToNA
 public import Cslib.Computability.Automata.TwoWayNA.OfNA
 public import Cslib.Computability.Circuit.Basic
 public import Cslib.Computability.Circuit.Boolean.Basic
+public import Cslib.Computability.Circuit.Boolean.Complexity
 public import Cslib.Computability.Circuit.Boolean.Counting
+public import Cslib.Computability.Circuit.Boolean.Family
 public import Cslib.Computability.Circuit.Boolean.Lupanov
 public import Cslib.Computability.Circuit.Boolean.LupanovConstruction
 public import Cslib.Computability.Circuit.Boolean.Shannon
@@ -44,6 +46,7 @@ public import Cslib.Computability.Circuit.Boolean.Synthesis
 public import Cslib.Computability.Circuit.Complexity
 public import Cslib.Computability.Circuit.Composition
 public import Cslib.Computability.Circuit.Counting
+public import Cslib.Computability.Circuit.Family
 public import Cslib.Computability.Circuit.Finite
 public import Cslib.Computability.Circuit.Homomorphism
 public import Cslib.Computability.Circuit.Normalization
@@ -72,6 +75,7 @@ public import Cslib.Computability.Languages.OmegaLanguage
 public import Cslib.Computability.Languages.OmegaRegularLanguage
 public import Cslib.Computability.Languages.RegularLanguage
 public import Cslib.Computability.Languages.SafetyLiveness
+public import Cslib.Computability.Languages.Slice
 public import Cslib.Computability.Languages.SyntacticMonoid
 public import Cslib.Computability.Machines.Turing.MultiTape.Combinators.AlmostConstant
 public import Cslib.Computability.Machines.Turing.MultiTape.ConfigBound
