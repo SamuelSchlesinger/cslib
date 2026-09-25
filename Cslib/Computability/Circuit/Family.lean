@@ -8,6 +8,7 @@ module
 
 public import Cslib.Computability.Circuit.Complexity
 public import Cslib.Computability.Languages.Slice
+public import Cslib.Foundations.Data.BitString
 
 /-!
 # Circuit families and size classes
