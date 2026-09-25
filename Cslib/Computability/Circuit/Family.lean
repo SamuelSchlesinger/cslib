@@ -19,9 +19,9 @@ relates the circuits for different lengths: families are a nonuniform model of c
 
 `SIZE I s` is the class of languages decided under `I` by a family whose circuit on `n` inputs has
 at most `s n` gates, following [Arora and Barak, Definition 6.2][AroraBarak09]. The bound holds
-exactly at every length, not asymptotically. It is stated through the existence of a family rather
-than through `complexity`, which is `0` on a slice with no circuit over an incomplete basis and
-would let such a language into every size class.
+exactly at every length, not asymptotically. It is stated through the existence of a family, so
+that it makes sense over any basis; over a complete basis it is the class of languages whose
+slices have complexity at most the bound.
 
 ## References
 
