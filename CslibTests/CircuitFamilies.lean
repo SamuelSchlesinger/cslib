@@ -42,6 +42,10 @@ example : DecidableInSize (0 : Language Bool) interpretation not fun _ => 1 := b
   rw [Function.comp_apply, Bool.eq_iff_iff]
   simp [Language.notMem_zero]
 
+-- Any polynomial bound puts a language in P/poly, leading coefficient included.
+example {L : Language Bool} (hL : L ∈ SIZE interpretation fun n => 3 * n ^ 2 + 5) : L ∈ PPoly :=
+  mem_PPoly_of_le hL 3 2 5 fun _ => le_rfl
+
 -- The language of all-`true` words is unary.
 example : ({w | ∀ b ∈ w, b = true} : Language Bool) ∈ PPoly :=
   mem_PPoly_of_unary fun _ hw => hw

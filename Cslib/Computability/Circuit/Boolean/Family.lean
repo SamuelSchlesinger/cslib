@@ -51,6 +51,30 @@ theorem mem_PPoly_iff {L : Language Bool} :
 theorem SIZE_subset_PPoly (k : ℕ) : SIZE interpretation (fun n => n ^ k + k) ⊆ PPoly :=
   Set.subset_iUnion (fun k => SIZE interpretation fun n => n ^ k + k) k
 
+/-- Every polynomial bound lies below some `n ^ k + k` at every length: a large enough `k`
+absorbs the leading coefficient for `n ≥ c` and the whole polynomial for `n < c`. -/
+private theorem le_pow_add (c k d : ℕ) : ∃ k', ∀ n, c * n ^ k + d ≤ n ^ k' + k' := by
+  refine ⟨c ^ (k + 1) + d + k + 1, fun n => ?_⟩
+  rcases lt_or_ge n c with hn | hn
+  · calc c * n ^ k + d ≤ c * c ^ k + d := by gcongr
+      _ = c ^ (k + 1) + d := by ring
+      _ ≤ n ^ (c ^ (k + 1) + d + k + 1) + (c ^ (k + 1) + d + k + 1) := by omega
+  · rcases Nat.eq_zero_or_pos n with rfl | hpos
+    · obtain rfl : c = 0 := by omega
+      omega
+    · calc c * n ^ k + d ≤ n * n ^ k + d := by gcongr
+        _ = n ^ (k + 1) + d := by ring
+        _ ≤ n ^ (c ^ (k + 1) + d + k + 1) + (c ^ (k + 1) + d + k + 1) := by
+          have := Nat.pow_le_pow_right hpos (show k + 1 ≤ c ^ (k + 1) + d + k + 1 by omega)
+          omega
+
+/-- The bounds `n ^ k + k` are cofinal among polynomials, so a language decided within any
+polynomial bound is in P/poly. -/
+theorem mem_PPoly_of_le {L : Language Bool} {s : ℕ → ℕ} (hL : L ∈ SIZE interpretation s)
+    (c k d : ℕ) (h : ∀ n, s n ≤ c * n ^ k + d) : L ∈ PPoly := by
+  obtain ⟨k', hk'⟩ := le_pow_add c k d
+  exact SIZE_subset_PPoly k' (SIZE_mono (fun n => (h n).trans (hk' n)) hL)
+
 /-- Lupanov's bound for families: for every `ε > 0` there is a length beyond which every
 language is decided by a family with at most `(1 + ε) 2ⁿ/n` gates per circuit. -/
 theorem exists_decides_size_le (ε : ℝ) (hε : 0 < ε) :
