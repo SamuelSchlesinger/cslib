@@ -15,10 +15,12 @@ import Mathlib.Order.Filter.AtTopBot.Basic
 import Mathlib.Tactic.Ring
 
 /-!
-# Polynomial-size De Morgan circuit families
+# Size classes of De Morgan circuit families
 
-`PPoly` is the class P/poly of languages decided by De Morgan circuit families of polynomial size,
-following [Arora and Barak, Definition 6.5][AroraBarak09]. The bound is `n ^ k + k` rather than
+`SIZE s` is the class of languages decided by De Morgan circuit families with at most `s n` gates
+on `n` inputs, following [Arora and Barak, Definition 6.1][AroraBarak09], and `PPoly` is the
+class P/poly of languages decided by such families of polynomial size, following their
+Definition 6.5. The bound in P/poly is `n ^ k + k` rather than
 `n ^ k` because of the slice at length `0`: a circuit with no inputs has no wire to designate as
 its output until it has a gate, so that slice costs at least one constant gate, which `0 ^ k` does
 not allow when `k > 0`.
@@ -41,15 +43,30 @@ open Filter
 
 namespace Cslib.Circuits.Boolean
 
+/-- `SIZE(s)`: the languages decided by De Morgan circuit families with at most `s n` gates on
+`n` inputs. -/
+def SIZE (s : ℕ → ℕ) : Set (Language Bool) := {L | DecidableInSize L interpretation id s}
+
+theorem mem_SIZE_iff {L : Language Bool} {s : ℕ → ℕ} :
+    L ∈ SIZE s ↔ DecidableInSize L interpretation id s :=
+  Iff.rfl
+
+theorem SIZE_mono : Monotone SIZE := fun _ _ h _ hL => hL.mono h
+
+/-- A language is in `SIZE s` exactly when every slice has complexity at most the bound. -/
+theorem mem_SIZE_iff_complexity_le {L : Language Bool} {s : ℕ → ℕ} :
+    L ∈ SIZE s ↔ ∀ n, complexity interpretation (fun x (_ : Fin 1) => L.slice n x) ≤ s n :=
+  decidableInSize_id_iff_complexity_le
+
 /-- P/poly: the languages decided by De Morgan circuit families of polynomial size. -/
-def PPoly : Set (Language Bool) := ⋃ k, SIZE interpretation fun n => n ^ k + k
+def PPoly : Set (Language Bool) := ⋃ k, SIZE fun n => n ^ k + k
 
 theorem mem_PPoly_iff {L : Language Bool} :
-    L ∈ PPoly ↔ ∃ k, L ∈ SIZE interpretation fun n => n ^ k + k :=
+    L ∈ PPoly ↔ ∃ k, L ∈ SIZE fun n => n ^ k + k :=
   Set.mem_iUnion
 
-theorem SIZE_subset_PPoly (k : ℕ) : SIZE interpretation (fun n => n ^ k + k) ⊆ PPoly :=
-  Set.subset_iUnion (fun k => SIZE interpretation fun n => n ^ k + k) k
+theorem SIZE_subset_PPoly (k : ℕ) : SIZE (fun n => n ^ k + k) ⊆ PPoly :=
+  Set.subset_iUnion (fun k => SIZE fun n => n ^ k + k) k
 
 /-- Every polynomial bound lies below some `n ^ k + k` at every length: a large enough `k`
 absorbs the leading coefficient for `n ≥ c` and the whole polynomial for `n < c`. -/
@@ -70,7 +87,7 @@ private theorem le_pow_add (c k d : ℕ) : ∃ k', ∀ n, c * n ^ k + d ≤ n ^ 
 
 /-- The bounds `n ^ k + k` are cofinal among polynomials, so a language decided within any
 polynomial bound is in P/poly. -/
-theorem mem_PPoly_of_le {L : Language Bool} {s : ℕ → ℕ} (hL : L ∈ SIZE interpretation s)
+theorem mem_PPoly_of_le {L : Language Bool} {s : ℕ → ℕ} (hL : L ∈ SIZE s)
     (c k d : ℕ) (h : ∀ n, s n ≤ c * n ^ k + d) : L ∈ PPoly := by
   obtain ⟨k', hk'⟩ := le_pow_add c k d
   exact SIZE_subset_PPoly k' (SIZE_mono (fun n => (h n).trans (hk' n)) hL)
@@ -79,7 +96,7 @@ theorem mem_PPoly_of_le {L : Language Bool} {s : ℕ → ℕ} (hL : L ∈ SIZE i
 language is decided by a family with at most `(1 + ε) 2ⁿ/n` gates per circuit. -/
 theorem exists_decides_size_le (ε : ℝ) (hε : 0 < ε) :
     ∃ N : ℕ, ∀ L : Language Bool, ∃ F : CircuitFamily signature,
-      F.Decides interpretation L ∧ ∀ n ≥ N, ((F n).size : ℝ) ≤ (1 + ε) * 2 ^ n / n := by
+      F.Decides interpretation id L ∧ ∀ n ≥ N, ((F n).size : ℝ) ≤ (1 + ε) * 2 ^ n / n := by
   obtain ⟨N, hN⟩ := Lupanov.exists_circuit ε hε
   refine ⟨N, fun L => ?_⟩
   have h (n : ℕ) : ∃ c : Circuit signature n 1,
@@ -92,13 +109,13 @@ theorem exists_decides_size_le (ε : ℝ) (hε : 0 < ε) :
         (fun x (_ : Fin 1) => L.slice n x)
       exact ⟨c, hc, fun h => absurd h hn⟩
   choose F hF hs using h
-  exact ⟨F, hF, hs⟩
+  exact ⟨F, CircuitFamily.decides_id_iff.mpr hF, hs⟩
 
 /-- Shannon's bound for families: some language defeats, at all large lengths, every family
 with at most `2ⁿ/n` gates per circuit. -/
 theorem exists_language_lt_size :
     ∃ L : Language Bool, ∃ N : ℕ, ∀ F : CircuitFamily signature,
-      F.Decides interpretation L → ∀ n ≥ N, 2 ^ n / (n : ℝ) < ((F n).size : ℝ) := by
+      F.Decides interpretation id L → ∀ n ≥ N, 2 ^ n / (n : ℝ) < ((F n).size : ℝ) := by
   obtain ⟨N, hN⟩ := Shannon.exists_hard_function
   have h (n : ℕ) : ∃ f : BooleanFunction n, N ≤ n →
       ∀ c : Circuit signature n 1,
@@ -108,7 +125,8 @@ theorem exists_language_lt_size :
       exact ⟨f, fun _ => hf⟩
     · exact ⟨fun _ => false, fun h => absurd h hn⟩
   choose f hf using h
-  exact ⟨Language.ofSlices f, N, fun F hF n hn => hf n hn (F n) (by simpa using hF n)⟩
+  exact ⟨Language.ofSlices f, N, fun F hF n hn =>
+    hf n hn (F n) (by simpa using CircuitFamily.decides_id_iff.mp hF n)⟩
 
 /-- Some language is not in P/poly. -/
 theorem exists_not_mem_PPoly : ∃ L : Language Bool, L ∉ PPoly := by
@@ -140,7 +158,7 @@ private theorem ofFn_eq_replicate_true_iff {n : ℕ} {x : BitString n} :
 `n + 1` gates on `n` inputs: a constant when the word of length `n` is not in the language, and
 otherwise a conjunction of the inputs, whose extra gate supplies the empty conjunction. -/
 theorem mem_SIZE_of_unary {L : Language Bool} (hL : ∀ w ∈ L, ∀ b ∈ w, b = true) :
-    L ∈ SIZE interpretation fun n => n + 1 := by
+    L ∈ SIZE fun n => n + 1 := by
   rw [mem_SIZE_iff_complexity_le]
   intro n
   have hmem (x : BitString n) :
