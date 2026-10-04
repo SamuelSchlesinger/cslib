@@ -14,11 +14,13 @@ import CslibTests.ComputationalCryptoBoosting
 import CslibTests.ComputationalCryptoClock
 import CslibTests.ComputationalCryptoComposition
 import CslibTests.ComputationalCryptoEntropy
+import CslibTests.ComputationalCryptoExtraction
 import CslibTests.ComputationalCryptoIteration
 import CslibTests.ComputationalCryptoMachines
 import CslibTests.ComputationalCryptoMasking
 import CslibTests.ComputationalCryptoOracles
 import CslibTests.ComputationalCryptoPrograms
+import CslibTests.ComputationalCryptoReductions
 import CslibTests.ComputationalCryptoSequenceLearner
 import CslibTests.Congruence
 import CslibTests.DFA

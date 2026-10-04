@@ -6,14 +6,29 @@ Authors: Samuel Schlesinger
 
 # Computational cryptography
 
-This directory develops cryptography against uniform probabilistic polynomial-time (PPT)
-adversaries. Games are ordinary probabilistic programs written in Lean `do` notation. Efficiency is
-a separate contract: a program is PPT when one fixed multi-tape Turing machine with a polynomial
-clock realizes its exact output distribution. Cryptographic arguments compose such contracts
-without mentioning tapes or machine configurations.
+This directory proves that **one-way functions imply pseudorandom generators**, against uniform
+probabilistic polynomial-time (PPT) adversaries. Games are ordinary probabilistic programs written
+in Lean `do` notation. Efficiency is a separate contract: a program is PPT when one fixed
+multi-tape Turing machine with a polynomial clock realizes its exact output distribution.
+Cryptographic arguments compose such contracts without mentioning tapes or machine
+configurations.
 
-The [definition checks](../../../CslibTests/ComputationalCrypto.lean) and the
-[programming examples](../../../CslibTests/ComputationalCryptoPrograms.lean) are a good place to
+```lean
+import Cslib.Crypto.Computational.OneWayToPRG
+
+open Cslib.Probability Cslib.Crypto
+
+example {f : Word → Word} (hf : OneWay f) :
+    ∃ generator : Word → Word, PseudorandomGenerator generator (fun n => n + 1) :=
+  hf.exists_pseudorandomGenerator
+```
+
+The existence of a one-way function is the only assumption. Entropy estimates, samplers and
+reductions are constructed inside the proofs, and no successful parameter choice is given to an
+algorithm as advice. [`GGM`](GGM/Security.lean) turns the generator into a pseudorandom function.
+
+The [programming examples](../../../CslibTests/ComputationalCryptoPrograms.lean) and the
+[reduction examples](../../../CslibTests/ComputationalCryptoReductions.lean) are a good place to
 start reading.
 
 ## Security definitions
@@ -133,8 +148,36 @@ the level and the challenge position uniformly, losing exactly
 `dyadicSize n * dyadicSize (count n)`. The [security theorem](GGM/Security.lean) derives the
 query budget from the adversary's certificate.
 
+### One-way functions
+
+The general construction follows Holenstein's simplification of the Håstad–Impagliazzo–Levin–Luby
+theorem.
+
+| Stage | Entry point | Content |
+| --- | --- | --- |
+| Pseudoentropy | [Pseudoentropy/OneWay](Pseudoentropy/OneWay.lean) | Output normalization, hashed parity and a uniform prediction-to-inversion reduction give a samplable pair with gap `1 / (2 * (n + 7))`. |
+| Hard-core sets | [Pseudoentropy/DenseMask](Pseudoentropy/DenseMask.lean) | A uniform boosting and empirical-selection procedure produces a dense soft mask against every test in an efficient indexed family. |
+| Extraction | [Pseudoentropy/ThreeSource](Pseudoentropy/ThreeSource.lean) | Three game hops extract the public observation, the hidden labels and the remaining sampler coins with a common repetition schedule. |
+| Implementation | [ThreeSource/Seeded](Pseudoentropy/ThreeSource/Seeded.lean) | Saved coins and three matrix seeds realize the extractor exactly, with proved output length and polynomial running time. |
+| Entropy guesses | [EntropyGrid](Pseudoentropy/EntropyGrid.lean), [Candidates](Pseudoentropy/ThreeSource/Candidates.lean) | Polynomially many explicit guesses all expand, and one of them is secure. |
+| Combination | [Padding](Pseudoentropy/ThreeSource/Padding.lean), [Amplification](Pseudoentropy/ThreeSource/Amplification.lean), [Combined](Pseudoentropy/ThreeSource/Combined.lean) | Every candidate is padded to a common seed width and stretched, and the XOR of all candidates is secure. |
+| All seed lengths | [GeneratorReindex](GeneratorReindex.lean) | A bounded search selects the family member that fits each input length; [UniformChoice](UniformChoice.lean) keeps the security reduction uniform. |
+| Assembly | [Pseudoentropy/Generator](Pseudoentropy/Generator.lean), [OneWayToPRG](OneWayToPRG.lean) | The complete implication. |
+
+The generator computes every candidate in the entropy grid; the successful candidate appears only
+in the security proof. The proof uses fresh soft masks where Holenstein uses a set oracle, and its
+matrix extractor gives polynomial seed length without the optimized exponent of the write-up.
+
 ## Sources
 
+- Johan Håstad, Russell Impagliazzo, Leonid Levin, and Michael Luby,
+  *A Pseudorandom Generator from Any One-Way Function*, SIAM Journal on Computing 28(4), 1999.
+  [doi:10.1137/S0097539793244708](https://doi.org/10.1137/S0097539793244708).
+- Thomas Holenstein, *Pseudorandom Generators from One-Way Functions: A Simple Construction for
+  Any Hardness*, TCC 2006, Sections 3.3–5.
+  [Write-up](https://crypto.ethz.ch/publications/files/Holens06.pdf).
+- Thomas Holenstein, *Key Agreement from Weak Bit Agreement*, STOC 2005, Section 2.2.
+  [Uniform hard-core argument](https://crypto.ethz.ch/publications/files/Holens05.pdf).
 - Oded Goldreich, Shafi Goldwasser, and Silvio Micali, *How to Construct Random Functions*,
   JACM 33(4), 1986, Sections 3.2–3.3.
   [Construction and adaptive hybrids](https://www.wisdom.weizmann.ac.il/~oded/X/ggm-jacm.pdf).
