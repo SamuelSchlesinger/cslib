@@ -199,6 +199,7 @@ public import Cslib.Crypto.Computational.PseudorandomFunction.RandomOracle
 public import Cslib.Crypto.Computational.PseudorandomGenerator
 public import Cslib.Crypto.Computational.Reduction
 public import Cslib.Crypto.Computational.Statistical
+public import Cslib.Crypto.Computational.Stretch
 public import Cslib.Crypto.Game
 public import Cslib.Crypto.Game.Hybrid
 public import Cslib.Crypto.Game.Statistical

@@ -119,7 +119,8 @@ half of the seed, keeps the other half and appends their inner product. The
 [Goldreich–Levin reduction](GoldreichLevin/Reduction.lean) turns a predictor of absolute bias `ε`
 into an inverter of success at least `ε / 8`. Its finite analysis, its
 [word-level implementation](GoldreichLevin/WordReduction.lean) and the asymptotic argument are
-separate.
+separate. [`PseudorandomGenerator.amplify`](Stretch.lean) extends one bit of stretch to any
+efficiently computed longer output length by a uniform hybrid reduction.
 
 ## Sources
 
