@@ -150,6 +150,7 @@ public import Cslib.Computability.Probabilistic.Fold
 public import Cslib.Computability.Probabilistic.Input
 public import Cslib.Computability.Probabilistic.Iteration
 public import Cslib.Computability.Probabilistic.List
+public import Cslib.Computability.Probabilistic.Memoize
 public import Cslib.Computability.Probabilistic.Oracle
 public import Cslib.Computability.Probabilistic.OracleEncoding
 public import Cslib.Computability.Probabilistic.Output
@@ -163,6 +164,7 @@ public import Cslib.Computability.Probabilistic.Realization.Iteration
 public import Cslib.Computability.Probabilistic.Realization.PolynomialTime
 public import Cslib.Computability.Probabilistic.Realization.Transducer
 public import Cslib.Computability.Probabilistic.Sampling
+public import Cslib.Computability.Probabilistic.Search
 public import Cslib.Computability.Probabilistic.Tape
 public import Cslib.Computability.URM.Basic
 public import Cslib.Computability.URM.Computable
@@ -364,3 +366,6 @@ public import Cslib.Probability.UniformNat
 public import Cslib.Probability.UniversalHash
 public import Cslib.Probability.WordBits
 public import Cslib.Tactic.GrindAttrs
+public import Cslib.Tactic.PPT
+public import Cslib.Tactic.PolyTime
+public import Cslib.Tactic.PolyTime.Init
