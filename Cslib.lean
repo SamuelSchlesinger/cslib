@@ -140,6 +140,12 @@ public import Cslib.Computability.Machines.Turing.MultiTape.TapeLemmas
 public import Cslib.Computability.Machines.Turing.SingleTape.Defs
 public import Cslib.Computability.Machines.Turing.SingleTape.Deterministic
 public import Cslib.Computability.Machines.Turing.SingleTape.NonDeterministic
+public import Cslib.Computability.Probabilistic.Clock
+public import Cslib.Computability.Probabilistic.Oracle
+public import Cslib.Computability.Probabilistic.OracleEncoding
+public import Cslib.Computability.Probabilistic.Output
+public import Cslib.Computability.Probabilistic.PPT
+public import Cslib.Computability.Probabilistic.QueryBounds
 public import Cslib.Computability.URM.Basic
 public import Cslib.Computability.URM.Computable
 public import Cslib.Computability.URM.Defs
