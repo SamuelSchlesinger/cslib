@@ -30,7 +30,9 @@ From position `p` the run halts after `p + 1` steps, or after `2` steps if `p = 
 ## Main results
 
 * `Turing.MultiTapeTM.rewindInput`: the machine that rewinds the input head.
-* `Turing.MultiTapeTM.runFrom_rewindInput`: its run from the initial state.
+* `Turing.MultiTapeTM.runFrom_rewindInput`: its run from the initial state, and
+  `Turing.MultiTapeTM.runFrom_rewindInput_noTapes`: the same run inside a machine with `k` work
+  tapes.
 -/
 
 namespace Turing.MultiTapeTM
@@ -61,6 +63,10 @@ public def rewindInput (Symbol : Type*) : MultiTapeTM 0 Symbol RewindState where
     | .start, _ => inputAction (-1) (some .walk)
     | .walk, some _ => inputAction (-1) (some .walk)
     | .walk, none => inputAction 1 none
+
+@[simp]
+public lemma rewindInput_q₀ (Symbol : Type*) : (rewindInput Symbol).q₀ = .start := by
+  rfl
 
 namespace Rewind
 
@@ -102,5 +108,16 @@ public theorem runFrom_rewindInput (p : Fin (input.length + 2))
   have h : (moveInputPos p .neg).val = p.val - 1 := by grind [SignType.cast]
   rw [runFrom, Function.iterate_succ_apply, Rewind.step_eq rfl, ← runFrom, ← h]
   exact Rewind.runFrom_walk (moveInputPos p .neg) (by omega)
+
+/-- Placed inside a machine with `k` work tapes, the rewinding machine changes only the control
+state and the input head. -/
+public theorem runFrom_rewindInput_noTapes {k : ℕ} (p : Fin (input.length + 2))
+    (tapes : Fin k → ℤ → Option Symbol) (heads : Fin k → ℤ) (out : List Symbol) :
+    ((rewindInput Symbol).extendTapes (noTapes k)).runFrom
+        ⟨some (rewindInput Symbol).q₀, p, tapes, heads, out⟩ (p.val - 1 + 2) =
+      ⟨none, 1, tapes, heads, out⟩ := by
+  rw [runFrom_noTapes]
+  simp only [noTapesCfg]
+  rw [runFrom_rewindInput]
 
 end Turing.MultiTapeTM

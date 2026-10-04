@@ -6,7 +6,7 @@ Authors: Christian Reitwiessner, Samuel Schlesinger
 
 module
 
-public import Cslib.Computability.Machines.Turing.MultiTape.Plumbing.WordsCfg
+public import Cslib.Computability.Machines.Turing.MultiTape.Plumbing.ExtendTapes
 public import Cslib.Computability.Machines.Turing.MultiTape.TapeLemmas
 
 /-!
@@ -34,6 +34,8 @@ untouched by construction.
 * `Turing.MultiTapeTM.runFrom_rewindWork`: its run from the initial state, with the special cases
   `Turing.MultiTapeTM.runFrom_rewindWork_none` (nothing is written) and
   `Turing.MultiTapeTM.runFrom_rewindWork_erase` (the whole word is erased).
+* `Turing.MultiTapeTM.runFrom_rewindWork_none_tapeEmb`: rewinding tape `i` of a machine with `k`
+  work tapes.
 * `Turing.MultiTapeTM.workTapePos_runFrom_rewindWork`: the rewound head stays within `[-1, p]`.
 -/
 
@@ -62,6 +64,11 @@ public def rewindWork (Symbol : Type*) (write : Option (Option Symbol) := none) 
     | .start, _ => ⟨0, fun _ => (none, -1), none, some .scan⟩
     | .scan, some _ => ⟨0, fun _ => (write, -1), none, some .scan⟩
     | .scan, none => ⟨0, fun _ => (none, 1), none, none⟩
+
+@[simp]
+public lemma rewindWork_q₀ (Symbol : Type*) (write : Option (Option Symbol)) :
+    (rewindWork Symbol write).q₀ = .start := by
+  rfl
 
 namespace RewindWork
 
@@ -159,6 +166,19 @@ public theorem runFrom_rewindWork_erase (ip : Fin (input.length + 2)) (t : ℤ �
   · rfl
   · rw [hw, tapeOfList_eq_none_iff]
     omega
+
+/-- Placed on tape `i` of a machine with `k` work tapes, rewinding without writing changes only
+the control state and the head of tape `i`. -/
+public theorem runFrom_rewindWork_none_tapeEmb {i : Fin k} (ip : Fin (input.length + 2))
+    (tapes : Fin k → ℤ → Option Symbol) (heads : Fin k → ℤ) (out : List Symbol) {w : List Symbol}
+    (hw : tapes i = tapeOfList w) {p : ℕ} (hp : p ≤ w.length) :
+    ((rewindWork Symbol).extendTapes (tapeEmb i)).runFrom
+        ⟨some (rewindWork Symbol).q₀, ip, tapes, Function.update heads i p, out⟩ (p + 2) =
+      ⟨none, ip, tapes, Function.update heads i 0, out⟩ := by
+  rw [runFrom_tapeEmb]
+  simp only [oneTapeCfg, Function.update_self]
+  rw [runFrom_rewindWork_none ip (tapes i) out hw hp, embed_tapeEmb]
+  simp
 
 open RewindWork in
 /-- At every step, the head is within `[-1, p]`: it walks from its start `p ≤ w.length` down to
