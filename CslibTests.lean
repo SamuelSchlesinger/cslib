@@ -9,6 +9,7 @@ import CslibTests.CircuitCounting
 import CslibTests.Circuits
 import CslibTests.Commitment
 import CslibTests.Complexity.Combinators
+import CslibTests.ComputationalCrypto
 import CslibTests.ComputationalCryptoClock
 import CslibTests.ComputationalCryptoComposition
 import CslibTests.ComputationalCryptoIteration

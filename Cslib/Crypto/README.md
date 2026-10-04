@@ -48,6 +48,12 @@ and `BitVec n` versions and nonexistence corollaries. Zero-error security agains
 is equivalent to matching the ideal distribution; with the defaults, this means exactly uniform
 output. The identity generator is a nonexpanding example.
 
+## Computational security
+
+[`Computational`](Computational) defines one-way functions, pseudorandom generators and
+pseudorandom functions against uniform probabilistic polynomial-time adversaries. Its
+[guide](Computational/README.md) describes the definitions and the efficiency contracts.
+
 ## Plans and notes
 
 - We plan on developing applied calculi and logics for modelling and reasoning about security protocols.
