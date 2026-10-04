@@ -110,8 +110,21 @@ Composition that keeps an external oracle interface open is not covered: an unfi
 cannot be discarded by a dummy call when the oracle's state is observable. All reductions in this
 directory compose closed programs.
 
+## Results
+
+### One-way permutations
+
+[`OneWayPermutation.pseudorandomGenerator`](GoldreichLevin/HardCore.lean) applies the permutation to
+half of the seed, keeps the other half and appends their inner product. The
+[Goldreich–Levin reduction](GoldreichLevin/Reduction.lean) turns a predictor of absolute bias `ε`
+into an inverter of success at least `ε / 8`. Its finite analysis, its
+[word-level implementation](GoldreichLevin/WordReduction.lean) and the asymptotic argument are
+separate.
+
 ## Sources
 
+- Oded Goldreich and Leonid Levin, *A Hard-Core Predicate for All One-Way Functions*, STOC 1989,
+  with Luca Trevisan's lecture notes for the decoding argument.
 - Sanjeev Arora and Boaz Barak, *Computational Complexity: A Modern Approach*, Chapter 9, and
   Dan Boneh and Victor Shoup, *A Graduate Course in Applied Cryptography*, for the security
   definitions.
