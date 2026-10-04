@@ -12,6 +12,7 @@ import CslibTests.Complexity.Combinators
 import CslibTests.ComputationalCrypto
 import CslibTests.ComputationalCryptoClock
 import CslibTests.ComputationalCryptoComposition
+import CslibTests.ComputationalCryptoEntropy
 import CslibTests.ComputationalCryptoIteration
 import CslibTests.ComputationalCryptoMachines
 import CslibTests.ComputationalCryptoOracles

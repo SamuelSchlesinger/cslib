@@ -199,7 +199,17 @@ public import Cslib.Crypto.Computational.HardCore
 public import Cslib.Crypto.Computational.Hybrid
 public import Cslib.Crypto.Computational.Hybrid.Sequence
 public import Cslib.Crypto.Computational.OneWay
+public import Cslib.Crypto.Computational.OneWay.Collision
+public import Cslib.Crypto.Computational.OneWay.Normalize
 public import Cslib.Crypto.Computational.Prediction
+public import Cslib.Crypto.Computational.Pseudoentropy.Basic
+public import Cslib.Crypto.Computational.Pseudoentropy.HashPair
+public import Cslib.Crypto.Computational.Pseudoentropy.HashReduction
+public import Cslib.Crypto.Computational.Pseudoentropy.OneWay
+public import Cslib.Crypto.Computational.Pseudoentropy.Reduction
+public import Cslib.Crypto.Computational.Pseudoentropy.Seed
+public import Cslib.Crypto.Computational.Pseudoentropy.Selection
+public import Cslib.Crypto.Computational.Pseudoentropy.WordReduction
 public import Cslib.Crypto.Computational.PseudorandomFunction
 public import Cslib.Crypto.Computational.PseudorandomFunction.RandomOracle
 public import Cslib.Crypto.Computational.PseudorandomGenerator
