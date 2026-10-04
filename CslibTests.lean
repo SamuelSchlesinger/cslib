@@ -13,6 +13,7 @@ import CslibTests.ComputationalCrypto
 import CslibTests.ComputationalCryptoBoosting
 import CslibTests.ComputationalCryptoClock
 import CslibTests.ComputationalCryptoComposition
+import CslibTests.ComputationalCryptoDemo
 import CslibTests.ComputationalCryptoEntropy
 import CslibTests.ComputationalCryptoExtraction
 import CslibTests.ComputationalCryptoIteration

@@ -51,8 +51,9 @@ output. The identity generator is a nonexpanding example.
 ## Computational security
 
 [`Computational`](Computational) defines one-way functions, pseudorandom generators and
-pseudorandom functions against uniform probabilistic polynomial-time adversaries. Its
-[guide](Computational/README.md) describes the definitions and the efficiency contracts.
+pseudorandom functions against uniform probabilistic polynomial-time adversaries, and proves that
+one-way functions imply both. Its [guide](Computational/README.md) describes the definitions, the
+efficiency contracts and the structure of the proofs.
 
 ## Plans and notes
 

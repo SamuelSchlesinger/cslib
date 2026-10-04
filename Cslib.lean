@@ -206,6 +206,7 @@ public import Cslib.Crypto.Computational.Hybrid.Sequence
 public import Cslib.Crypto.Computational.OneWay
 public import Cslib.Crypto.Computational.OneWay.Collision
 public import Cslib.Crypto.Computational.OneWay.Normalize
+public import Cslib.Crypto.Computational.OneWayToPRF
 public import Cslib.Crypto.Computational.OneWayToPRG
 public import Cslib.Crypto.Computational.Prediction
 public import Cslib.Crypto.Computational.Pseudoentropy.Basic

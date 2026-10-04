@@ -6,28 +6,33 @@ Authors: Samuel Schlesinger
 
 # Computational cryptography
 
-This directory proves that **one-way functions imply pseudorandom generators**, against uniform
-probabilistic polynomial-time (PPT) adversaries. Games are ordinary probabilistic programs written
-in Lean `do` notation. Efficiency is a separate contract: a program is PPT when one fixed
-multi-tape Turing machine with a polynomial clock realizes its exact output distribution.
-Cryptographic arguments compose such contracts without mentioning tapes or machine
+This directory proves that **one-way functions imply pseudorandom generators and pseudorandom
+functions**, against uniform probabilistic polynomial-time (PPT) adversaries. Games are ordinary
+probabilistic programs written in Lean `do` notation. Efficiency is a separate contract: a program
+is PPT when one fixed multi-tape Turing machine with a polynomial clock realizes its exact output
+distribution. Cryptographic arguments compose such contracts without mentioning tapes or machine
 configurations.
 
 ```lean
-import Cslib.Crypto.Computational.OneWayToPRG
+import Cslib.Crypto.Computational.OneWayToPRF
 
 open Cslib.Probability Cslib.Crypto
 
 example {f : Word → Word} (hf : OneWay f) :
     ∃ generator : Word → Word, PseudorandomGenerator generator (fun n => n + 1) :=
   hf.exists_pseudorandomGenerator
+
+example {f : Word → Word} (hf : OneWay f) :
+    ∃ family : Word → Word → Word, PseudorandomFunction family :=
+  hf.exists_pseudorandomFunction
 ```
 
 The existence of a one-way function is the only assumption. Entropy estimates, samplers and
 reductions are constructed inside the proofs, and no successful parameter choice is given to an
-algorithm as advice. [`GGM`](GGM/Security.lean) turns the generator into a pseudorandom function.
+algorithm as advice.
 
-The [programming examples](../../../CslibTests/ComputationalCryptoPrograms.lean) and the
+The [walkthrough](../../../CslibTests/ComputationalCryptoDemo.lean), the
+[programming examples](../../../CslibTests/ComputationalCryptoPrograms.lean) and the
 [reduction examples](../../../CslibTests/ComputationalCryptoReductions.lean) are a good place to
 start reading.
 
