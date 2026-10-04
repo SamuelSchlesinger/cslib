@@ -122,8 +122,22 @@ into an inverter of success at least `ε / 8`. Its finite analysis, its
 separate. [`PseudorandomGenerator.amplify`](Stretch.lean) extends one bit of stretch to any
 efficiently computed longer output length by a uniform hybrid reduction.
 
+### Pseudorandom functions
+
+[`GGM.eval`](GGM/Evaluation.lean) follows the query bits through the tree of generator labels.
+The [prefix hybrids](GGM/Hybrid.lean) cache one random label per queried prefix at a chosen level,
+with endpoints equal to the real and ideal PRF games. The [expansion game](GGM/Expansion.lean)
+identifies adjacent hybrids, and a [pre-sampling law](../../Languages/Probabilistic/Presample.lean)
+replaces adaptive sampling by a test of a saved list. The [reduction](GGM/Reduction.lean) chooses
+the level and the challenge position uniformly, losing exactly
+`dyadicSize n * dyadicSize (count n)`. The [security theorem](GGM/Security.lean) derives the
+query budget from the adversary's certificate.
+
 ## Sources
 
+- Oded Goldreich, Shafi Goldwasser, and Silvio Micali, *How to Construct Random Functions*,
+  JACM 33(4), 1986, Sections 3.2–3.3.
+  [Construction and adaptive hybrids](https://www.wisdom.weizmann.ac.il/~oded/X/ggm-jacm.pdf).
 - Oded Goldreich and Leonid Levin, *A Hard-Core Predicate for All One-Way Functions*, STOC 1989,
   with Luca Trevisan's lecture notes for the decoding argument.
 - Sanjeev Arora and Boaz Barak, *Computational Complexity: A Modern Approach*, Chapter 9, and

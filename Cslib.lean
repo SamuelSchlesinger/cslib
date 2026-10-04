@@ -184,6 +184,11 @@ public import Cslib.Computability.URM.StandardForm
 public import Cslib.Computability.URM.StraightLine
 public import Cslib.Crypto.Computational.Basic
 public import Cslib.Crypto.Computational.Ensemble
+public import Cslib.Crypto.Computational.GGM.Evaluation
+public import Cslib.Crypto.Computational.GGM.Expansion
+public import Cslib.Crypto.Computational.GGM.Hybrid
+public import Cslib.Crypto.Computational.GGM.Reduction
+public import Cslib.Crypto.Computational.GGM.Security
 public import Cslib.Crypto.Computational.GoldreichLevin.Decoding
 public import Cslib.Crypto.Computational.GoldreichLevin.HardCore
 public import Cslib.Crypto.Computational.GoldreichLevin.Parameters
@@ -192,6 +197,7 @@ public import Cslib.Crypto.Computational.GoldreichLevin.WordDecoder
 public import Cslib.Crypto.Computational.GoldreichLevin.WordReduction
 public import Cslib.Crypto.Computational.HardCore
 public import Cslib.Crypto.Computational.Hybrid
+public import Cslib.Crypto.Computational.Hybrid.Sequence
 public import Cslib.Crypto.Computational.OneWay
 public import Cslib.Crypto.Computational.Prediction
 public import Cslib.Crypto.Computational.PseudorandomFunction
