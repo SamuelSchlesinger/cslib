@@ -197,6 +197,7 @@ public import Cslib.Crypto.Computational.GoldreichLevin.WordDecoder
 public import Cslib.Crypto.Computational.GoldreichLevin.WordReduction
 public import Cslib.Crypto.Computational.HardCore
 public import Cslib.Crypto.Computational.Hybrid
+public import Cslib.Crypto.Computational.Hybrid.SavedPrediction
 public import Cslib.Crypto.Computational.Hybrid.Sequence
 public import Cslib.Crypto.Computational.OneWay
 public import Cslib.Crypto.Computational.OneWay.Collision
@@ -214,12 +215,18 @@ public import Cslib.Crypto.Computational.Pseudoentropy.Boosting.Sampling
 public import Cslib.Crypto.Computational.Pseudoentropy.Boosting.Selection
 public import Cslib.Crypto.Computational.Pseudoentropy.Boosting.Training
 public import Cslib.Crypto.Computational.Pseudoentropy.Boosting.Vote
+public import Cslib.Crypto.Computational.Pseudoentropy.DenseMask
+public import Cslib.Crypto.Computational.Pseudoentropy.ExtractionSchedule
 public import Cslib.Crypto.Computational.Pseudoentropy.HashPair
 public import Cslib.Crypto.Computational.Pseudoentropy.HashReduction
+public import Cslib.Crypto.Computational.Pseudoentropy.Learning
+public import Cslib.Crypto.Computational.Pseudoentropy.Masking
 public import Cslib.Crypto.Computational.Pseudoentropy.OneWay
 public import Cslib.Crypto.Computational.Pseudoentropy.Reduction
+public import Cslib.Crypto.Computational.Pseudoentropy.RepeatedExtraction
 public import Cslib.Crypto.Computational.Pseudoentropy.Seed
 public import Cslib.Crypto.Computational.Pseudoentropy.Selection
+public import Cslib.Crypto.Computational.Pseudoentropy.SequenceLearner
 public import Cslib.Crypto.Computational.Pseudoentropy.WordReduction
 public import Cslib.Crypto.Computational.PseudorandomFunction
 public import Cslib.Crypto.Computational.PseudorandomFunction.RandomOracle
