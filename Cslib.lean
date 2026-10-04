@@ -87,7 +87,9 @@ public import Cslib.Computability.Machines.Turing.MultiTape.FiniteTape
 public import Cslib.Computability.Machines.Turing.MultiTape.Machine
 public import Cslib.Computability.Machines.Turing.MultiTape.Nondeterministic
 public import Cslib.Computability.Machines.Turing.MultiTape.Oracle
+public import Cslib.Computability.Machines.Turing.MultiTape.Oracle.Clock
 public import Cslib.Computability.Machines.Turing.MultiTape.Oracle.Closed
+public import Cslib.Computability.Machines.Turing.MultiTape.Oracle.Composition
 public import Cslib.Computability.Machines.Turing.MultiTape.Oracle.Deterministic
 public import Cslib.Computability.Machines.Turing.MultiTape.Oracle.ExtendTapes
 public import Cslib.Computability.Machines.Turing.MultiTape.Oracle.Halting
@@ -95,10 +97,13 @@ public import Cslib.Computability.Machines.Turing.MultiTape.Oracle.InputFromTape
 public import Cslib.Computability.Machines.Turing.MultiTape.Oracle.OutputExpansion
 public import Cslib.Computability.Machines.Turing.MultiTape.Oracle.OutputPrefix
 public import Cslib.Computability.Machines.Turing.MultiTape.Oracle.OutputToTape
+public import Cslib.Computability.Machines.Turing.MultiTape.Oracle.PolynomialClock
 public import Cslib.Computability.Machines.Turing.MultiTape.Oracle.Postprocessing
 public import Cslib.Computability.Machines.Turing.MultiTape.Oracle.Prepend
 public import Cslib.Computability.Machines.Turing.MultiTape.Oracle.QueryBounds
 public import Cslib.Computability.Machines.Turing.MultiTape.Oracle.Rename
+public import Cslib.Computability.Machines.Turing.MultiTape.Oracle.Replay
+public import Cslib.Computability.Machines.Turing.MultiTape.Oracle.ReplayInput
 public import Cslib.Computability.Machines.Turing.MultiTape.Oracle.Sequential
 public import Cslib.Computability.Machines.Turing.MultiTape.Oracle.Simulation
 public import Cslib.Computability.Machines.Turing.MultiTape.Plumbing.ClearWork
