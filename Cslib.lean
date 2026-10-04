@@ -88,9 +88,13 @@ public import Cslib.Computability.Machines.Turing.MultiTape.Plumbing.ClearWorkPa
 public import Cslib.Computability.Machines.Turing.MultiTape.Plumbing.Concat
 public import Cslib.Computability.Machines.Turing.MultiTape.Plumbing.ExtendTapes
 public import Cslib.Computability.Machines.Turing.MultiTape.Plumbing.InputFromTape
+public import Cslib.Computability.Machines.Turing.MultiTape.Plumbing.Iteration
 public import Cslib.Computability.Machines.Turing.MultiTape.Plumbing.OutputPrefix
 public import Cslib.Computability.Machines.Turing.MultiTape.Plumbing.OutputToTape
+public import Cslib.Computability.Machines.Turing.MultiTape.Plumbing.PolynomialClock
+public import Cslib.Computability.Machines.Turing.MultiTape.Plumbing.PrepareClock
 public import Cslib.Computability.Machines.Turing.MultiTape.Plumbing.PrepareInput
+public import Cslib.Computability.Machines.Turing.MultiTape.Plumbing.PrepareReplay
 public import Cslib.Computability.Machines.Turing.MultiTape.Plumbing.RestoreWork
 public import Cslib.Computability.Machines.Turing.MultiTape.Plumbing.RewindInput
 public import Cslib.Computability.Machines.Turing.MultiTape.Plumbing.RewindLast
@@ -101,6 +105,8 @@ public import Cslib.Computability.Machines.Turing.MultiTape.Plumbing.TapeUpdate
 public import Cslib.Computability.Machines.Turing.MultiTape.Plumbing.TrackWork
 public import Cslib.Computability.Machines.Turing.MultiTape.Plumbing.TransferWord
 public import Cslib.Computability.Machines.Turing.MultiTape.Plumbing.TransformsTapes
+public import Cslib.Computability.Machines.Turing.MultiTape.Plumbing.Unary
+public import Cslib.Computability.Machines.Turing.MultiTape.Plumbing.UnaryRepeat
 public import Cslib.Computability.Machines.Turing.MultiTape.Plumbing.WordsCfg
 public import Cslib.Computability.Machines.Turing.MultiTape.Relabel
 public import Cslib.Computability.Machines.Turing.MultiTape.TapeLemmas
