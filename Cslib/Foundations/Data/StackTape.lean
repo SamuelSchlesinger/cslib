@@ -46,7 +46,7 @@ where the list is eventually `none`.
 
 Represented as a `List (Option Symbol)` that does not end with `none`.
 -/
-structure StackTape (Symbol : Type*) where
+@[ext] structure StackTape (Symbol : Type*) where
   /-- The underlying list representation -/
   toList : List (Option Symbol)
   /--
@@ -98,6 +98,9 @@ def tail (l : StackTape Symbol) : StackTape Symbol :=
   | [] => nil
   | hd :: t => ⟨t, by grind⟩
 
+@[simp] lemma tail_toList (tape : StackTape Symbol) : tape.tail.toList = tape.toList.tail := by
+  cases tape with | mk values h => cases values <;> rfl
+
 /-- Get the first element of the `StackTape`. -/
 @[scoped grind]
 def head (l : StackTape Symbol) : Option Symbol :=
@@ -137,9 +140,36 @@ lemma cons_head_tail (l : StackTape Symbol) :
   rw [eq_iff]
   simp
 
+/-- Read a cell, treating every position beyond the finite representation as blank. -/
+def read : StackTape Symbol → ℕ → Option Symbol
+  | tape, 0 => tape.head
+  | tape, position + 1 => tape.tail.read position
+
+@[simp] lemma read_zero (tape : StackTape Symbol) : tape.read 0 = tape.head := rfl
+
+@[simp] lemma read_succ (tape : StackTape Symbol) (position : ℕ) :
+    tape.read (position + 1) = tape.tail.read position := rfl
+
+@[simp] lemma read_nil (position : ℕ) : (nil : StackTape Symbol).read position = none := by
+  induction position <;> simp_all [read, head, tail, nil]
+
+/-- The indexed view agrees with the stored list, with absent cells read as blanks. -/
+lemma read_eq_getElem? (tape : StackTape Symbol) (position : ℕ) :
+    tape.read position = tape.toList[position]?.join := by
+  induction position generalizing tape with
+  | zero => cases tape with | mk values h => cases values <;> rfl
+  | succ position ih =>
+    rw [read_succ, ih]
+    cases tape with | mk values h => cases values <;> simp [tail, nil]
+
 /-- Create a `StackTape` from a list by mapping all elements to `some` -/
 @[scoped grind]
 def mapSome (l : List Symbol) : StackTape Symbol := ⟨l.map some, by simp⟩
+
+@[simp] lemma read_mapSome (values : List Symbol) (position : ℕ) :
+    (mapSome values).read position = values[position]? := by
+  simp only [read_eq_getElem?, mapSome, List.getElem?_map]
+  cases values[position]? <;> rfl
 
 section Length
 

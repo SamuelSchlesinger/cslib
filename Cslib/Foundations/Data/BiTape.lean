@@ -44,7 +44,7 @@ namespace Cslib.Turing
 A structure for bidirectionally-infinite Turing machine tapes
 that eventually take on blank `none` values
 -/
-structure BiTape (Symbol : Type*) where
+@[ext] structure BiTape (Symbol : Type*) where
   /-- The symbol currently under the tape head -/
   head : Option Symbol
   /-- The contents to the left of the head -/
@@ -77,6 +77,32 @@ def mk₁ (l : List Symbol) : BiTape Symbol :=
   match l with
   | [] => ∅
   | h :: t => { head := some h, left := ∅, right := StackTape.mapSome t }
+
+/-- Read a cell at an integer displacement from the current head. Negative positions lie to
+the left; cells outside the finite stored contents are blank. -/
+def read (tape : BiTape Symbol) : ℤ → Option Symbol
+  | .ofNat 0 => tape.head
+  | .ofNat (position + 1) => tape.right.read position
+  | .negSucc position => tape.left.read position
+
+@[simp] lemma read_zero (tape : BiTape Symbol) : tape.read 0 = tape.head := rfl
+
+@[simp] lemma read_nil (position : ℤ) : (nil : BiTape Symbol).read position = none := by
+  cases position with
+  | ofNat position => cases position <;> simp [read, nil]
+  | negSucc position => simp [read, nil]
+
+/-- Loading a word puts its first symbol under the head and leaves all negative cells blank. -/
+lemma read_mk₁ (values : List Symbol) (position : ℤ) :
+    (mk₁ values).read position = if 0 ≤ position then values[position.toNat]? else none := by
+  cases values with
+  | nil => simp [mk₁]
+  | cons value values =>
+    cases position with
+    | ofNat position =>
+      cases position <;> simp [read, mk₁]
+      lia
+    | negSucc position => simp [read, mk₁]
 
 section Move
 
@@ -116,12 +142,39 @@ lemma moveLeft_moveRight (t : BiTape Symbol) : t.moveLeft.moveRight = t := by
 lemma moveRight_moveLeft (t : BiTape Symbol) : t.moveRight.moveLeft = t := by
   simp [moveLeft, moveRight]
 
+/-- Moving the head right shifts the relative reading coordinates by one cell. -/
+lemma read_moveRight (tape : BiTape Symbol) (position : ℤ) :
+    tape.moveRight.read position = tape.read (position + 1) := by
+  cases position with
+  | ofNat position => cases position <;> rfl
+  | negSucc position =>
+    cases position with
+    | zero => simp [read, moveRight]
+    | succ position =>
+      have h : Int.negSucc (position + 1) + 1 = Int.negSucc position := by lia
+      simp [read, moveRight, h]
+
+/-- Moving the head left shifts the relative reading coordinates by one cell. -/
+lemma read_moveLeft (tape : BiTape Symbol) (position : ℤ) :
+    tape.moveLeft.read position = tape.read (position - 1) := by
+  have h := read_moveRight tape.moveLeft (position - 1)
+  simpa using h.symm
+
 end Move
 
 /--
 Write a value under the head of the `BiTape`.
 -/
 def write (t : BiTape Symbol) (a : Option Symbol) : BiTape Symbol := { t with head := a }
+
+/-- A write changes exactly the current cell in the integer-indexed view. -/
+lemma read_write (tape : BiTape Symbol) (symbol : Option Symbol) (position : ℤ) :
+    (tape.write symbol).read position = if position = 0 then symbol else tape.read position := by
+  cases position with
+  | ofNat position =>
+    cases position <;> simp [read, write]
+    lia
+  | negSucc position => simp [read, write]
 
 /--
 The space used by a `BiTape` is the number of symbols
