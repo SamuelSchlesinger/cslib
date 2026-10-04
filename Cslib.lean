@@ -256,6 +256,15 @@ public import Cslib.MachineLearning.PACLearning.Defs
 public import Cslib.MachineLearning.PACLearning.VCDimension
 public import Cslib.MachineLearning.PACLearning.VersionSpace
 public import Cslib.MachineLearning.PACLearning.VersionSpaceLattice
+public import Cslib.Probability.BitString
+public import Cslib.Probability.Concentration
+public import Cslib.Probability.Conditioning
 public import Cslib.Probability.PMF
+public import Cslib.Probability.PairwiseIndependent
+public import Cslib.Probability.Product
+public import Cslib.Probability.Quantile
 public import Cslib.Probability.StatisticalDistance
+public import Cslib.Probability.Uniform
+public import Cslib.Probability.UniformNat
+public import Cslib.Probability.WordBits
 public import Cslib.Tactic.GrindAttrs
