@@ -92,14 +92,14 @@ theorem runState_presample (source : ProbComp Value) (fallback : Value)
         (fun (result, next, _) => (result, next))) =
       runState (fun q s => (ProbComp.eval source).bind (fun value => handler value q s))
         program s := by
-  induction program using FreeM.induction generalizing s count with
+  induction program using PFunctor.FreeM.induction generalizing s count with
   | pure a => simp [PMF.pure_map]
   | lift_bind op cont ih =>
-    simp only [FreeM.bind_eq_bind] at hbound ⊢
+    simp only [PFunctor.FreeM.bind_eq_bind] at hbound ⊢
     cases op with
     | sample p =>
-      simp only [show (FreeM.lift (.sample p) : OracleComp Query Response _) = sample p from rfl]
-        at hbound ⊢
+      rw [show PFunctor.FreeM.lift (P := ProbEffect.signature Query Response) (.sample p) =
+        sample p from rfl] at hbound ⊢
       have hnext value (hvalue : value ∈ p.support) : ∀ result next transcript,
           (result, next, transcript) ∈ (runState (withTranscript
             (fun q s => (ProbComp.eval source).bind (fun value => handler value q s)))
@@ -114,8 +114,8 @@ theorem runState_presample (source : ProbComp Value) (fallback : Value)
       intro value hvalue
       exact ih value s count (hnext value hvalue)
     | query q =>
-      simp only [show (FreeM.lift (.query q) : OracleComp Query Response _) = query q from rfl]
-        at hbound ⊢
+      rw [show PFunctor.FreeM.lift (P := ProbEffect.signature Query Response) (.query q) =
+        query q from rfl] at hbound ⊢
       have hnext := query_bound_cont
         (fun q s => (ProbComp.eval source).bind (fun value => handler value q s))
         q cont s count hbound

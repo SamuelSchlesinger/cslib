@@ -6,15 +6,15 @@ Authors: Samuel Schlesinger
 
 module
 
-public import Cslib.Foundations.Control.Monad.Free
+public import Cslib.Foundations.Data.PFunctor.Free
 public import Mathlib.Probability.Distributions.Uniform
 
 /-!
 # Probabilistic programs with oracles
 
 `OracleComp Query Response α` is a terminating probabilistic program with typed oracle calls.
-It reuses `FreeM`, so programs use ordinary `do` notation. An oracle can return a different type
-for each query; sum types of queries describe multiple interfaces. `ProbComp` has no oracle calls.
+It reuses `PFunctor.FreeM`, so programs use ordinary `do` notation. An oracle can return a different
+type for each query; sum types describe multiple interfaces. `ProbComp` has no oracle calls.
 
 `OracleComp.eval` interprets a program using a memoryless oracle, while `OracleComp.runState`
 threads a hidden state through calls. `OracleComp.simulate` replaces each call by another program,
@@ -28,7 +28,7 @@ Unbounded loops and nontermination are outside this language; bounded iteration 
 ## References
 
 The separation of oracle syntax and interpretation is also used in Devon Tuma and collaborators'
-[VCVio](https://github.com/Verified-zkEVM/VCVio). This implementation is built on CSLib's `FreeM`.
+[VCVio](https://github.com/Verified-zkEVM/VCVio). Both use CSLib's `PFunctor.FreeM`.
 -/
 
 @[expose] public section
@@ -38,15 +38,25 @@ namespace Cslib
 universe u
 
 /-- The effects of a probabilistic program: sampling and an external query. -/
-inductive ProbEffect (Query : Type u) (Response : Query → Type u) : Type u → Type (u + 1) where
+inductive ProbEffect (Query : Type u) : Type (u + 1) where
   /-- Draw a value from a specified distribution. -/
-  | sample {α : Type u} (distribution : PMF α) : ProbEffect Query Response α
+  | sample {α : Type u} (distribution : PMF α) : ProbEffect Query
   /-- Ask the external oracle a question. -/
-  | query (q : Query) : ProbEffect Query Response (Response q)
+  | query (q : Query) : ProbEffect Query
+
+/-- The answer type of a sampling operation or external query. -/
+abbrev ProbEffect.response {Query : Type u} (Response : Query → Type u) : ProbEffect Query → Type u
+  | .sample (α := α) _ => α
+  | .query q => Response q
+
+/-- The polynomial signature of sampling operations and external queries. -/
+abbrev ProbEffect.signature (Query : Type u) (Response : Query → Type u) : PFunctor where
+  A := ProbEffect Query
+  B := ProbEffect.response Response
 
 /-- Terminating probabilistic programs with a typed oracle interface. -/
 abbrev OracleComp (Query : Type u) (Response : Query → Type u) :=
-  FreeM (ProbEffect Query Response)
+  PFunctor.FreeM (ProbEffect.signature Query Response)
 
 /-- Probabilistic programs with no external oracle. -/
 abbrev ProbComp := OracleComp PEmpty (fun _ => PEmpty)
@@ -56,18 +66,20 @@ namespace OracleComp
 variable {Query : Type u} {Response : Query → Type u} {α β State : Type u}
 
 /-- Sample from a distribution. This operation alone carries no efficiency guarantee. -/
-def sample (p : PMF α) : OracleComp Query Response α := FreeM.lift (.sample p)
+def sample (p : PMF α) : OracleComp Query Response α :=
+  PFunctor.FreeM.lift (P := ProbEffect.signature Query Response) (.sample p)
 
 /-- Uniform sampling from a nonempty finite type. -/
 noncomputable def uniform (α : Type u) [Fintype α] [Nonempty α] :
     OracleComp Query Response α := sample (PMF.uniformOfFintype α)
 
 /-- Make one oracle call. Later queries may depend on the answer. -/
-def query (q : Query) : OracleComp Query Response (Response q) := FreeM.lift (.query q)
+def query (q : Query) : OracleComp Query Response (Response q) :=
+  PFunctor.FreeM.lift (P := ProbEffect.signature Query Response) (.query q)
 
 /-- Interpret individual effects using a memoryless oracle. -/
 noncomputable def evalEffect (oracle : (q : Query) → PMF (Response q)) :
-    ProbEffect Query Response α → PMF α
+    (op : ProbEffect Query) → PMF (op.response Response)
   | .sample p => p
   | .query q => oracle q
 
@@ -82,22 +94,26 @@ noncomputable def eval (oracle : (q : Query) → PMF (Response q))
 @[simp] theorem eval_bind (oracle : (q : Query) → PMF (Response q))
     (program : OracleComp Query Response α) (next : α → OracleComp Query Response β) :
     eval oracle (program >>= next) = (eval oracle program).bind (fun a => eval oracle (next a)) :=
-  FreeM.liftM_bind _ _ _
+  PFunctor.FreeM.liftM_bind _ _ _
 
 @[simp] theorem eval_sample (oracle : (q : Query) → PMF (Response q)) (p : PMF α) :
-    eval oracle (sample p) = p := by simp [eval, sample, evalEffect]
+    eval oracle (sample p) = p := by
+  rw [eval, sample, PFunctor.FreeM.liftM_lift]
+  rfl
 
 @[simp] theorem eval_query (oracle : (q : Query) → PMF (Response q)) (q : Query) :
-    eval oracle (query q) = oracle q := by simp [eval, query, evalEffect]
+    eval oracle (query q) = oracle q := by
+  rw [eval, query, PFunctor.FreeM.liftM_lift]
+  rfl
 
 @[simp] theorem eval_map (oracle : (q : Query) → PMF (Response q)) (f : α → β)
     (program : OracleComp Query Response α) :
     eval oracle (f <$> program) = (eval oracle program).map f :=
-  FreeM.liftM_map _ _ _
+  PFunctor.FreeM.liftM_map _ _ _
 
 /-- Handle effects while keeping the oracle's private state. Sampling does not change that state. -/
 noncomputable def stateEffect (oracle : (q : Query) → StateT State PMF (Response q)) :
-    ProbEffect Query Response α → StateT State PMF α
+    (op : ProbEffect Query) → StateT State PMF (op.response Response)
   | .sample p => fun s => p.map (fun a => (a, s))
   | .query q => oracle q
 
@@ -114,17 +130,19 @@ noncomputable def runState (oracle : (q : Query) → StateT State PMF (Response 
     runState oracle (program >>= next) s =
       (runState oracle program s).bind (fun (a, s') => runState oracle (next a) s') := by
   unfold runState
-  rw [FreeM.liftM_bind]
+  rw [PFunctor.FreeM.liftM_bind]
   rfl
 
 @[simp] theorem runState_sample (oracle : (q : Query) → StateT State PMF (Response q))
     (p : PMF α) (s : State) :
     runState oracle (sample p) s = p.map (fun a => (a, s)) := by
-  simp [runState, sample, stateEffect]
+  rw [runState, sample, PFunctor.FreeM.liftM_lift]
+  rfl
 
 @[simp] theorem runState_query (oracle : (q : Query) → StateT State PMF (Response q))
     (q : Query) (s : State) : runState oracle (query q) s = oracle q s := by
-  simp [runState, query, stateEffect]
+  rw [runState, query, PFunctor.FreeM.liftM_lift]
+  rfl
 
 theorem runState_sample_bind (oracle : (q : Query) → StateT State PMF (Response q))
     (p : PMF α) (next : α → OracleComp Query Response β) (s : State) :
@@ -136,7 +154,7 @@ theorem runState_sample_bind (oracle : (q : Query) → StateT State PMF (Respons
     runState oracle (f <$> program) s =
       (runState oracle program s).map (fun (a, s') => (f a, s')) := by
   unfold runState
-  rw [FreeM.liftM_map]
+  rw [PFunctor.FreeM.liftM_map]
   rfl
 
 /-- An oracle may consult a fixed private environment without changing it. Its stateful execution
@@ -145,7 +163,7 @@ theorem runState_readOnly (oracle : (q : Query) → State → PMF (Response q))
     (program : OracleComp Query Response α) (s : State) :
     runState (fun q s => (oracle q s).map (fun a => (a, s))) program s =
       (eval (fun q => oracle q s) program).map (fun a => (a, s)) := by
-  induction program using FreeM.induction generalizing s with
+  induction program using PFunctor.FreeM.induction generalizing s with
   | pure a => simp [PMF.pure_map]
   | lift_bind op cont ih =>
     cases op with
@@ -174,9 +192,9 @@ theorem runState_stateless (oracle : (q : Query) → PMF (Response q))
 def simulate {Query' : Type u} {Response' : Query' → Type u}
     (handler : (q : Query) → OracleComp Query' Response' (Response q))
     (program : OracleComp Query Response α) : OracleComp Query' Response' α :=
-  program.liftM (fun op => match op with
+  PFunctor.FreeM.liftM (P := ProbEffect.signature Query Response) (fun op => match op with
     | .sample p => sample p
-    | .query q => handler q)
+    | .query q => handler q) program
 
 @[simp] theorem simulate_pure {Query' : Type u} {Response' : Query' → Type u}
     (handler : (q : Query) → OracleComp Query' Response' (Response q)) (a : α) :
@@ -187,33 +205,34 @@ def simulate {Query' : Type u} {Response' : Query' → Type u}
     (program : OracleComp Query Response α) (next : α → OracleComp Query Response β) :
     simulate handler (program >>= next) =
       (simulate handler program >>= fun a => simulate handler (next a)) :=
-  FreeM.liftM_bind _ _ _
+  PFunctor.FreeM.liftM_bind _ _ _
 
 @[simp] theorem simulate_sample {Query' : Type u} {Response' : Query' → Type u}
     (handler : (q : Query) → OracleComp Query' Response' (Response q)) (p : PMF α) :
     simulate handler (sample p) = sample p := by
-  simp [simulate, sample]
+  rw [simulate, sample, PFunctor.FreeM.liftM_lift]
 
 @[simp] theorem simulate_query {Query' : Type u} {Response' : Query' → Type u}
     (handler : (q : Query) → OracleComp Query' Response' (Response q)) (q : Query) :
     simulate handler (query q) = handler q := by
-  simp [simulate, query]
+  rw [simulate, query, PFunctor.FreeM.liftM_lift]
 
 @[simp] theorem simulate_map {Query' : Type u} {Response' : Query' → Type u}
     (handler : (q : Query) → OracleComp Query' Response' (Response q)) (f : α → β)
     (program : OracleComp Query Response α) :
     simulate handler (f <$> program) = f <$> simulate handler program :=
-  FreeM.liftM_map _ _ _
+  PFunctor.FreeM.liftM_map _ _ _
 
 /-- Replacing each call by itself leaves the program unchanged. -/
 @[simp] theorem simulate_id (program : OracleComp Query Response α) :
     simulate query program = program := by
-  induction program using FreeM.induction with
+  induction program using PFunctor.FreeM.induction with
   | pure a => rfl
   | lift_bind op cont ih =>
-    simp only [FreeM.bind_eq_bind, simulate_bind]
+    simp only [PFunctor.FreeM.bind_eq_bind, simulate_bind]
     congr 1
-    · cases op <;> simp [simulate, sample, query]
+    · cases op <;> simp [simulate, sample, query, PFunctor.FreeM.liftM, PFunctor.FreeM.lift,
+        -PFunctor.FreeM.liftBind_eq]
     · funext a; exact ih a
 
 /-- Oracle substitutions compose without introducing fresh state between calls. -/
@@ -224,12 +243,13 @@ theorem simulate_simulate {Query' Query'' : Type u} {Response' : Query' → Type
     (program : OracleComp Query Response α) :
     simulate second (simulate first program) =
       simulate (fun q => simulate second (first q)) program := by
-  induction program using FreeM.induction with
+  induction program using PFunctor.FreeM.induction with
   | pure a => rfl
   | lift_bind op cont ih =>
-    simp only [FreeM.bind_eq_bind, simulate_bind]
+    simp only [PFunctor.FreeM.bind_eq_bind, simulate_bind]
     congr 1
-    · cases op <;> simp [simulate, sample]
+    · cases op <;> simp [simulate, sample, PFunctor.FreeM.liftM, PFunctor.FreeM.lift,
+        -PFunctor.FreeM.liftBind_eq]
     · funext a; exact ih a
 
 /-- Simulating calls and then evaluating agrees with evaluating with the simulated oracle. -/
@@ -237,12 +257,13 @@ theorem eval_simulate {Query' : Type u} {Response' : Query' → Type u}
     (handler : (q : Query) → OracleComp Query' Response' (Response q))
     (oracle : (q : Query') → PMF (Response' q)) (program : OracleComp Query Response α) :
     eval oracle (simulate handler program) = eval (fun q => eval oracle (handler q)) program := by
-  induction program using FreeM.induction with
+  induction program using PFunctor.FreeM.induction with
   | pure a => rfl
   | lift_bind op cont ih =>
-    simp only [FreeM.bind_eq_bind, simulate_bind, eval_bind]
+    simp only [PFunctor.FreeM.bind_eq_bind, simulate_bind, eval_bind]
     congr 1
-    · cases op <;> simp [simulate, eval, evalEffect, sample]
+    · cases op <;> simp [simulate, eval, evalEffect, sample, PFunctor.FreeM.liftM,
+        PFunctor.FreeM.lift, -PFunctor.FreeM.liftBind_eq]
     · funext a; exact ih a
 
 /-- Oracle substitution also preserves interactions with a stateful handler, including its final
@@ -253,12 +274,13 @@ theorem runState_simulate {Query' : Type u} {Response' : Query' → Type u}
     (program : OracleComp Query Response α) (s : State) :
     runState oracle (simulate handler program) s =
       runState (fun q => runState oracle (handler q)) program s := by
-  induction program using FreeM.induction generalizing s with
+  induction program using PFunctor.FreeM.induction generalizing s with
   | pure a => rfl
   | lift_bind op cont ih =>
-    simp only [FreeM.bind_eq_bind, simulate_bind, runState_bind]
+    simp only [PFunctor.FreeM.bind_eq_bind, simulate_bind, runState_bind]
     congr 1
-    · cases op <;> simp [simulate, runState, stateEffect, sample]
+    · cases op <;> simp [simulate, runState, stateEffect, sample, PFunctor.FreeM.liftM,
+        PFunctor.FreeM.lift, -PFunctor.FreeM.liftBind_eq]
     · funext a; exact ih a.1 a.2
 
 end OracleComp

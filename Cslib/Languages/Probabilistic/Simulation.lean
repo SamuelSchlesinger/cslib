@@ -38,7 +38,7 @@ theorem runState_invariant
     (program : OracleComp Query Response α) (s : State) (hs : invariant s)
     (result : α) (s' : State) (h : (result, s') ∈ (runState oracle program s).support) :
     invariant s' := by
-  induction program using FreeM.induction generalizing s with
+  induction program using PFunctor.FreeM.induction generalizing s with
   | pure a =>
     simp only [runState_pure, PMF.mem_support_pure_iff, Prod.mk.injEq] at h
     rwa [h.2]
@@ -68,9 +68,9 @@ the resulting program may still use a separate external oracle interface. -/
 def simulateState {Query' : Type u} {Response' : Query' → Type u}
     (handler : (q : Query) → StateT State (OracleComp Query' Response') (Response q))
     (program : OracleComp Query Response α) : StateT State (OracleComp Query' Response') α :=
-  program.liftM (fun op => match op with
+  PFunctor.FreeM.liftM (P := ProbEffect.signature Query Response) (fun op => match op with
     | .sample p => fun s => (fun a => (a, s)) <$> sample p
-    | .query q => handler q)
+    | .query q => handler q) program
 
 @[simp] theorem simulateState_pure {Query' : Type u} {Response' : Query' → Type u}
     (handler : (q : Query) → StateT State (OracleComp Query' Response') (Response q))
@@ -83,19 +83,19 @@ def simulateState {Query' : Type u} {Response' : Query' → Type u}
     simulateState handler (program >>= next) s =
       (simulateState handler program s >>= fun (a, s') => simulateState handler (next a) s') := by
   unfold simulateState
-  rw [FreeM.liftM_bind]
+  rw [PFunctor.FreeM.liftM_bind]
   rfl
 
 @[simp] theorem simulateState_sample {Query' : Type u} {Response' : Query' → Type u}
     (handler : (q : Query) → StateT State (OracleComp Query' Response') (Response q))
     (p : PMF α) (s : State) :
     simulateState handler (sample p) s = (fun a => (a, s)) <$> sample p := by
-  simp [simulateState, sample]
+  rw [simulateState, sample, PFunctor.FreeM.liftM_lift]
 
 @[simp] theorem simulateState_query {Query' : Type u} {Response' : Query' → Type u}
     (handler : (q : Query) → StateT State (OracleComp Query' Response') (Response q))
     (q : Query) (s : State) : simulateState handler (query q) s = handler q s := by
-  simp [simulateState, query]
+  rw [simulateState, query, PFunctor.FreeM.liftM_lift]
 
 @[simp] theorem simulateState_map {Query' : Type u} {Response' : Query' → Type u}
     (handler : (q : Query) → StateT State (OracleComp Query' Response') (Response q))
@@ -122,7 +122,7 @@ theorem eval_simulateState {Query' : Type u} {Response' : Query' → Type u}
     (s : State) :
     eval oracle (simulateState handler program s) =
       runState (fun q s => eval oracle (handler q s)) program s := by
-  induction program using FreeM.induction generalizing s with
+  induction program using PFunctor.FreeM.induction generalizing s with
   | pure a => simp
   | lift_bind op cont ih =>
     cases op with
@@ -147,7 +147,7 @@ theorem runState_simulateState {Query' : Type u} {Response' : Query' → Type u}
         (fun ((a, s'), t') => (a, (s', t'))) =
       runState (fun q state => (runState oracle (handler q state.1) state.2).map
         (fun ((a, s'), t') => (a, (s', t')))) program (s, t) := by
-  induction program using FreeM.induction generalizing s t with
+  induction program using PFunctor.FreeM.induction generalizing s t with
   | pure a => simp [PMF.pure_map]
   | lift_bind op cont ih =>
     cases op with
@@ -177,7 +177,7 @@ theorem runState_simulation_of_invariant
     (program : OracleComp Query Response α) (s : State) (hs : invariant s) :
     (runState oracle program s).bind (fun (a, s') => (relate s').map (a, ·)) =
       (relate s).bind (fun t => runState oracle' program t) := by
-  induction program using FreeM.induction generalizing s with
+  induction program using PFunctor.FreeM.induction generalizing s with
   | pure a => simp [PMF.map, Function.comp_def]
   | lift_bind op cont ih =>
     cases op with
